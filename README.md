@@ -215,6 +215,8 @@ Mythic calls `builder.go` → `cargo build` → the binary is delivered to the o
 
 **Current usability**: The project is **build-ready** but requires a Mythic server for full validation. Basic commands (`ls`, `cd`, `shell`, etc.) are implemented and functional. Advanced features like file upload and process browsing are deferred to later phases.
 
+**Validation Process**: All changes to the Rust workspace are validated using `cargo update && cargo audit && cargo check && cargo clippy && cargo fmt` before being committed. This ensures code quality and security compliance.
+
 ---
 
 ## Security notice

