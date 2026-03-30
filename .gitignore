@@ -1,0 +1,34 @@
+# Rust build artifacts
+agent_code/target/
+agent_code/links/*/target/
+**/*.rs.bk
+Cargo.lock
+
+# Go build artifacts
+Payload_Type/linky/linky_payload_type
+Payload_Type/linky/go.sum
+
+# Generated implants
+implants/
+*.exe
+*.bin
+link-linux
+link-windows
+link-osx
+
+# Mythic runtime files
+.env
+InstalledServices/
+rabbitmq_config.json
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

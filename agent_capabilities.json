@@ -1,0 +1,42 @@
+{
+  "name": "linky",
+  "description": "Rust-native cross-platform C2 agent (Linux, Windows, macOS). Minimal, auditable, container-first.",
+  "github": "https://github.com/your-org/linky-mythic",
+  "os": ["Linux", "Windows", "macOS"],
+  "languages": ["Rust"],
+  "architectures": ["x86_64"],
+  "payload_output": ["executable"],
+  "c2": ["http"],
+  "features": {
+    "mythic": {
+      "download": true,
+      "upload": true,
+      "sleep": true,
+      "file_browser": false,
+      "process_browser": false,
+      "file_chunking": false,
+      "interactive": false,
+      "p2p": false,
+      "opsec_checks": false,
+      "dynamic_loading": false,
+      "translation_containers": false,
+      "wrapper": false,
+      "keylogging": false,
+      "credentials": false,
+      "artifacts": false,
+      "browser_scripts": false,
+      "adjust_commands": false,
+      "alerts": false
+    },
+    "custom": {
+      "per_implant_aes_key": true,
+      "obfuscated_strings": true,
+      "shellcode_export": true,
+      "kill_date": true,
+      "sleep_jitter": true,
+      "windows_process_injection": true,
+      "windows_integrity_level": true
+    }
+  },
+  "supported_wrappers": []
+}
