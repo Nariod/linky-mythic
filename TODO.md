@@ -18,9 +18,15 @@ handles TLS termination. No WebSocket, no SMB, no TCP — HTTP profile only.
 These files are already correct.
 
 **Reference files** (read before writing any code):
-- `agent_code/links/common/src/lib.rs` — new Mythic protocol implementation (already written)
-- `Payload_Type/linky/mythic/agent_functions/builder.go` — build function skeleton (TODOs inside)
-- `Payload_Type/linky/mythic/agent_functions/shell.go` — canonical command definition example
+- `agent_code/links/common/src/lib.rs` — Mythic protocol implementation (Phase 1+2 done)
+- `mythic/agent_functions/builder.go` — builder complet (Phase 3 done)
+- `mythic/agent_functions/shell.go` — canonical command definition example
+
+**Écarts par rapport au plan initial** (déjà implémentés ainsi, ne pas changer) :
+- Structure à la racine, pas sous `Payload_Type/linky/` — tous les chemins Go sont relatifs à la racine
+- Constants CALLBACK/IMPLANT_SECRET/PAYLOAD_UUID dans `stdlib.rs` (pas `main.rs`)
+- `reqwest 0.12` (pas 0.13 — indisponible), `rand 0.8.5` (pas 0.10)
+- `obfstr` retiré de `lib.rs` (strings JSON visibles sur le réseau de toute façon)
 
 ---
 
@@ -72,7 +78,7 @@ linky-mythic/
 
 ---
 
-## Phase 1 — Migrate Rust implant crates from Linky
+## Phase 1 — Migrate Rust implant crates from Linky ✅
 
 Copy and adapt the four Rust crates from `linky/` into `agent_code/links/`.
 The dispatch logic is **unchanged** — only the C2 loop entry point and build scripts change.
@@ -276,7 +282,7 @@ Same pattern as Linux:
 
 ---
 
-### Phase 1 validation
+### Phase 1 validation ✅
 
 ```bash
 cd agent_code
@@ -299,7 +305,7 @@ CALLBACK=x IMPLANT_SECRET=x PAYLOAD_UUID=x \
 
 ---
 
-## Phase 2 — Clean up the Mythic wire format in `lib.rs`
+## Phase 2 — Clean up the Mythic wire format in `lib.rs` ✅
 
 The current `build_mythic_message` / `parse_mythic_message` functions in
 `agent_code/links/common/src/lib.rs` hex-encode then immediately decode.
@@ -407,7 +413,7 @@ fn test_mythic_wire_wrong_key_returns_none() {
 }
 ```
 
-### Phase 2 validation
+### Phase 2 validation ✅
 
 ```bash
 cd agent_code
@@ -416,7 +422,7 @@ CALLBACK=x IMPLANT_SECRET=x PAYLOAD_UUID=x cargo test -p link-common
 
 ---
 
-## Phase 3 — Complete the Go builder
+## Phase 3 — Complete the Go builder ✅
 
 ### 3.1 — Implement `encryptCallback()` in `builder.go`
 
@@ -516,7 +522,7 @@ Run `go mod tidy` inside `Payload_Type/linky/` after updating.
 After Phase 3.2, `aesKey` is used only as `IMPLANT_SECRET`. Verify that the
 `encoding/hex` import is still needed (it is, for `hex.EncodeToString`).
 
-### Phase 3 validation
+### Phase 3 validation ✅
 
 ```bash
 cd Payload_Type/linky
@@ -528,7 +534,7 @@ This must compile without errors. No runtime test is possible without a live Myt
 
 ---
 
-## Phase 4 — Expand command definitions in Go
+## Phase 4 — Expand command definitions in Go 🔜 Next
 
 ### 4.1 — Split `commands_stub.go` into individual files
 

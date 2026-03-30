@@ -238,6 +238,25 @@ pub fn split_first(s: &str) -> (&str, &str) {
         .unwrap_or((s, ""))
 }
 
+/// Extract a single value from a Mythic parameters JSON object.
+/// Falls back to the raw string if the key is absent or if input is not valid JSON.
+/// Handles both string and number JSON values.
+/// Example: extract_param(r#"{"path": "/tmp"}"#, "path") → "/tmp"
+/// Example: extract_param(r#"{"seconds": 30}"#, "seconds") → "30"
+pub fn extract_param(parameters: &str, key: &str) -> String {
+    serde_json::from_str::<serde_json::Value>(parameters)
+        .ok()
+        .and_then(|v| {
+            let val = v.get(key)?;
+            Some(match val {
+                serde_json::Value::String(s) => s.clone(),
+                serde_json::Value::Number(n) => n.to_string(),
+                _ => val.to_string(),
+            })
+        })
+        .unwrap_or_else(|| parameters.to_string())
+}
+
 pub fn list_dir(path: &str) -> String {
     match std::fs::read_dir(path) {
         Ok(entries) => entries
