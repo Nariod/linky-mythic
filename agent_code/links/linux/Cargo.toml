@@ -1,0 +1,12 @@
+[package]
+name = "link-linux"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "link-linux"
+path = "src/main.rs"
+
+[dependencies]
+link-common = { path = "../common" }
+obfstr      = "0.4"

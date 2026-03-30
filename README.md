@@ -119,26 +119,25 @@ Post response:
 
 ```
 linky-mythic/
-├── Payload_Type/
-│   └── linky/                    # Go container (agent definition)
-│       ├── main.go               # Entry point: StartAndRunForever
-│       ├── go.mod
-│       ├── Dockerfile            # Rust toolchain embedded for build
-│       └── mythic/
-│           ├── payload_type.go   # Agent metadata (OS, arch, build params)
-│           └── agent_functions/  # One command = one Go file
-│               ├── builder.go    # build() → invokes cargo build
-│               ├── shell.go
-│               ├── commands_stub.go  # ls, cd, ps, netstat, download, upload…
-│               └── …
+├── main.go                       # Entry point: StartAndRunForever
+├── go.mod                        # module linky, go 1.21
+├── Dockerfile                    # Multi-stage: Go builder + Rust toolchain
+├── mythic/
+│   ├── payload_type.go           # Agent metadata (OS, arch, build params)
+│   └── agent_functions/          # Command definitions (Go)
+│       ├── builder.go            # build() → invokes cargo build
+│       ├── shell.go              # Canonical command template
+│       └── commands_stub.go      # ls, cd, ps, netstat, download, upload…
 ├── agent_code/                   # Rust implants (Mythic-adapted)
-│   ├── Cargo.toml                # Workspace
+│   ├── Cargo.toml                # Workspace (linux, windows, osx, common)
 │   └── links/
-│       ├── common/               # run_c2_loop rewritten for Mythic
-│       ├── linux/
-│       ├── windows/
-│       └── osx/
-├── documentation-payload/        # Hugo docs (displayed in Mythic UI)
+│       ├── common/               # Mythic protocol, crypto, dispatch, helpers
+│       │   └── src/
+│       │       ├── lib.rs        # run_c2_loop, AES-256-GCM, wire format
+│       │       └── dispatch.rs   # Cross-platform command dispatch
+│       ├── linux/                # Linux implant (native ps/netstat parsing)
+│       ├── windows/              # Windows implant (injection, integrity level)
+│       └── osx/                  # macOS implant (shell fallback for ps/netstat)
 ├── agent_capabilities.json       # mythicmeta.github.io/overview matrix
 ├── config.json                   # mythic-cli config
 └── README.md
@@ -204,12 +203,13 @@ Mythic calls `builder.go` → `cargo build` → the binary is delivered to the o
 | Sprint | Focus | Status |
 |--------|-------|--------|
 | 0 | Project structure, config.json, Dockerfile, Go stubs | ✅ Done |
-| 1 | Copy and adapt Rust implants from Linky (dispatch unchanged) | 🔜 Next |
-| 2 | Go crypto alignment (`encryptCallback`) + `PAYLOAD_UUID` wiring | 🔜 Next |
-| 3 | End-to-end test against a live Mythic instance | ⬜ Planned |
-| 4 | Hugo documentation + agent_capabilities.json refinement | ⬜ Planned |
-| 5 | Chunked file transfer (native Mythic) | ⬜ Planned |
-| 6 | Process browser (native Mythic) | ⬜ Planned |
+| 1 | Rust implants migration (dispatch, linux, windows, osx, common) + wire format cleanup | ✅ Done |
+| 2 | Go builder: `encryptCallback` AES-GCM + `PAYLOAD_UUID` string wiring | ✅ Done |
+| 3 | Go command definitions: split `commands_stub.go`, `extract_param` in Rust dispatch | 🔜 Next |
+| 4 | HTTPS config: `CALLBACK_URI` build parameter, User-Agent obfuscation | ⬜ Planned |
+| 5 | End-to-end test against a live Mythic instance | ⬜ Planned |
+| 6 | Upload via Mythic file store (native file transfer) | ⬜ Planned |
+| 7 | Process browser + Hugo documentation | ⬜ Planned |
 
 ---
 

@@ -16,16 +16,16 @@ func Initialize() {
 
 func payloadDefinition() agentstructs.PayloadType {
 	return agentstructs.PayloadType{
-		Name:                                   "linky",
-		FileExtension:                          "bin",
-		Author:                                 "@your-handle",
-		SupportedOS:                            []agentstructs.OS{agentstructs.MACOS, agentstructs.LINUX, agentstructs.WINDOWS},
-		Wrapper:                                false,
-		CanBeWrappedBy:                         []string{},
-		SupportsDynamicLoading:                 false,
-		Description:                            "Rust-native cross-platform C2 agent. Minimal, auditable, container-first.",
-		SupportedC2Profiles:                    []string{"http"},
-		MythicEncryptsData:                     true,
+		Name:                   "linky",
+		FileExtension:          "bin",
+		Author:                 "@your-handle",
+		SupportedOS:            []agentstructs.OS{agentstructs.MACOS, agentstructs.LINUX, agentstructs.WINDOWS},
+		Wrapper:                false,
+		CanBeWrappedBy:         []string{},
+		SupportsDynamicLoading: false,
+		Description:            "Rust-native cross-platform C2 agent. Minimal, auditable, container-first.",
+		SupportedC2Profiles:    []string{"http"},
+		MythicEncryptsData:     true,
 		BuildParameters: []agentstructs.BuildParameter{
 			{
 				Name:          "target_os",
