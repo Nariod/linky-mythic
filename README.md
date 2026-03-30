@@ -38,6 +38,8 @@ PostgreSQL ──── RabbitMQ ◄──────────────�
 GraphQL API     gRPC server
 ```
 
+**Current status**: The project is **build-ready** but requires a Mythic server for end-to-end testing. Basic commands (`ls`, `cd`, `shell`, etc.) are functional. Advanced features like file upload and process browsing are deferred to later phases.
+
 ---
 
 ## This project vs original Linky
@@ -205,11 +207,13 @@ Mythic calls `builder.go` → `cargo build` → the binary is delivered to the o
 | 0 | Project structure, config.json, Dockerfile, Go stubs | ✅ Done |
 | 1 | Rust implants migration (dispatch, linux, windows, osx, common) + wire format cleanup | ✅ Done |
 | 2 | Go builder: `encryptCallback` AES-GCM + `PAYLOAD_UUID` string wiring | ✅ Done |
-| 3 | Go command definitions: split `commands_stub.go`, `extract_param` in Rust dispatch | 🔜 Next |
-| 4 | HTTPS config: `CALLBACK_URI` build parameter, User-Agent obfuscation | ⬜ Planned |
+| 3 | Go command definitions: split `commands_stub.go`, `extract_param` in Rust dispatch | ✅ Done |
+| 4 | HTTPS config: `CALLBACK_URI` build parameter, User-Agent obfuscation | 🔜 Next |
 | 5 | End-to-end test against a live Mythic instance | ⬜ Planned |
 | 6 | Upload via Mythic file store (native file transfer) | ⬜ Planned |
 | 7 | Process browser + Hugo documentation | ⬜ Planned |
+
+**Current usability**: The project is **build-ready** but requires a Mythic server for full validation. Basic commands (`ls`, `cd`, `shell`, etc.) are implemented and functional. Advanced features like file upload and process browsing are deferred to later phases.
 
 ---
 

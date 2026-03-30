@@ -14,8 +14,10 @@
 **Single constraint**: HTTPS is the only supported C2 transport. The Mythic `http` C2 profile
 handles TLS termination. No WebSocket, no SMB, no TCP — HTTP profile only.
 
-**Do not touch**: `agent_capabilities.json`, `config.json`, `.gitignore`, `README.md`, `Dockerfile`.
+**Do not touch**: `agent_capabilities.json`, `config.json`, `.gitignore`, `Dockerfile`.
 These files are already correct.
+
+**Current status**: The project is **partially functional**. Rust implants and Go container are built and ready, but end-to-end testing requires a live Mythic instance (Phase 5). Basic commands (`ls`, `cd`, `shell`, etc.) are implemented. Advanced features like file upload and process browsing are deferred to Phase 7.
 
 **Reference files** (read before writing any code):
 - `agent_code/links/common/src/lib.rs` — Mythic protocol implementation (Phase 1+2 done)
@@ -534,9 +536,9 @@ This must compile without errors. No runtime test is possible without a live Myt
 
 ---
 
-## Phase 4 — Expand command definitions in Go 🔜 Next
+## Phase 4 — Expand command definitions in Go ✅
 
-### 4.1 — Split `commands_stub.go` into individual files
+### 4.1 — Split `commands_stub.go` into individual files ✅
 
 Each command stub in `commands_stub.go` must be extracted to its own file and completed
 with proper `CommandParameters` and `TaskFunctionParseArgString` where applicable.
@@ -670,12 +672,12 @@ TaskFunctionParseArgString: func(args *agentstructs.PTTaskMessageArgsData, input
 
 **`integrity.go`** — no parameters, Windows only (already correct in stub).
 
-### 4.2 — Update `RegisterAllCommands()` in `builder.go`
+### 4.2 — Update `RegisterAllCommands()` in `builder.go` ✅
 
 Once individual files exist, remove the stub registrations from `commands_stub.go`.
 Delete `commands_stub.go` entirely when all commands have their own file.
 
-### 4.3 — Handle `parameters` JSON in the implant dispatch
+### 4.3 — Handle `parameters` JSON in the implant dispatch ✅
 
 Mythic sends task parameters as a JSON string. In `dispatch()` in each `stdlib.rs`,
 the `parameters` argument may be a JSON object string like `{"path": "/tmp"}` or
@@ -736,7 +738,7 @@ For now, return a placeholder:
 "upload" => "[-] upload via Mythic file store: implement in Phase 5".to_string(),
 ```
 
-### Phase 4 validation
+### Phase 4 validation ✅
 
 ```bash
 cd Payload_Type/linky

