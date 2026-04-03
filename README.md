@@ -22,16 +22,22 @@ sudo ./mythic-cli install github https://github.com/Nariod/linky-mythic
 
 **Alpha — not yet tested against a live Mythic instance.**
 
-Phases 0–4 (project structure, Rust implant migration, wire format, Go builder, command
-definitions) are complete. The code compiles but has **critical bugs** that must be fixed
-before the first successful checkin. See `TODO.md` for the full audit and fix plan.
+Phases 0–5c (project structure, Rust implant migration, wire format, Go builder, command
+definitions, HTTPS configuration, and dispatch unification) are complete. The code compiles and passes all tests, but has not been validated against a live Mythic instance.
 
-Key blocking issues:
-- `build_client()` uses a non-existent reqwest method → TLS connections fail
-- Go builder has a type mismatch on `PayloadUUID` → won't compile
-- Double `https://` prefix in callback URL → invalid URLs
-- Go/Rust parameter mismatch on `sleep` and `inject` → commands don't work
-- Dispatch architecture differs across Linux/Windows/macOS → inconsistent behavior
+Key completed fixes:
+- ✅ `build_client()` now uses `.danger_accept_invalid_certs(true)` and includes User-Agent and timeout.
+- ✅ `run_c2_loop()` defensively handles URL schemes to avoid double `https://` prefixes.
+- ✅ Go builder correctly parses `PayloadUUID` and handles debug build paths.
+- ✅ Dispatch architecture unified across Linux/Windows/macOS using `dispatch_common(command, parameters)`.
+- ✅ `TaskResponse` sets `status: "error"` when a command fails (output starts with "[-]").
+- ✅ Unused dependencies (`obfstr`) removed from Cargo.toml files.
+- ✅ `extract_param` fallback returns `""` instead of raw JSON when the key is absent.
+- ✅ `derive_key` simplified using `.into()`.
+
+Key blocking issues (to be validated in Phase 6):
+- `MythicEncryptsData` setting may cause double encryption — requires live Mythic testing.
+- End-to-end command testing pending.
 
 ---
 
@@ -91,7 +97,7 @@ linky-mythic/
 │       ├── builder.go            # build() → invokes cargo build
 │       ├── shell.go              # Canonical command template
 │       ├── ls.go, cd.go, ...     # One file per command
-│       └── exit.go               # ⬜ TODO (BUG-10)
+│       └── exit.go               # ✅ Implemented
 ├── agent_code/                   # Rust implants (Mythic-adapted)
 │   ├── Cargo.toml                # Workspace (linux, windows, osx, common)
 │   └── links/
@@ -173,9 +179,9 @@ Mythic calls `builder.go` → `cargo build` → the binary is delivered to the o
 | 2 | Wire format cleanup (hex → direct AES-GCM, unit tests) | ✅ Done |
 | 3 | Go builder: `encryptCallback` AES-GCM + `PAYLOAD_UUID` wiring | ✅ Done |
 | 4 | Go command definitions: individual files, `extract_param` in Rust | ✅ Done |
-| 5 | **Critical bugfixes** (TLS, URL, reqwest feature, CALLBACK_URI) | 🔴 NEXT |
-| 5b | **Go builder bugfixes** (PayloadUUID type, debug path, params) | 🔴 NEXT |
-| 5c | **Dispatch unification** (refactor dispatch_common, error status) | 🟡 NEXT |
+| 5 | **Critical bugfixes** (TLS, URL, reqwest feature, CALLBACK_URI) | ✅ Done |
+| 5b | **Go builder bugfixes** (PayloadUUID type, debug path, params) | ✅ Done |
+| 5c | **Dispatch unification** (refactor dispatch_common, error status) | ✅ Done |
 | 6 | End-to-end test against a live Mythic instance | ⬜ Planned |
 | 7 | Download/Upload via Mythic file store (native file transfer) | ⬜ Planned |
 | 8 | OPSEC hardening (obfstr, key strength, zeroize, anti-panic) | ⬜ Planned |

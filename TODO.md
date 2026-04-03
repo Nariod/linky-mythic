@@ -562,7 +562,7 @@ Les remplacer par une CI réelle avec Docker-in-Docker et Mythic.
 | D2 | IMPLANT_SECRET = hex(UUID) est faible (16 bytes d'entropie sur 32) | Phase 8 |
 | D3 | Pas de jitter sur le retry checkin | Phase 8 |
 | D4 | macOS cross-compilation nécessite osxcross (non inclus dans le Dockerfile) | Deferred |
-| D5 | URI hardcodé à `"/"` | ✅ Done (Phase 5) |
+| D5 | URI hardcodé à `"/`" | ✅ Done (Phase 5) |
 | D6 | Pre-commit hook Rust workspace validation | ✅ Done |
 | D7 | reqwest version compatibility | ✅ Done — `"rustls"` correct en reqwest 0.13 |
 | D8 | Test scripts are stubs | Phase 9 |
