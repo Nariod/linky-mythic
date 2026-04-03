@@ -1,16 +1,29 @@
 # linky-mythic
 
-A Mythic C2 payload type providing Rust-native implants for Linux, Windows, and macOS.
+A Mythic payload type providing Rust-native implants for Linux, Windows, and macOS.
 
 > **Linky reimagined as a Mythic agent** — same Rust implants, Mythic handles GUI / backend / DB.
+>
+> **AI-assisted project notice** — this repository was written with the help of AI. Treat the code, documentation, and operational behavior with caution, and review everything carefully before building, deploying, or using it in a real environment.
+>
+> **Authorized-use only** — this project is provided strictly for testing, research, training, and explicitly authorized security exercises. Do not use it against systems, networks, or data without clear prior authorization. Any illegal or abusive use is prohibited.
 
 ---
 
-## What this project is
+## Overview
 
-`linky-mythic` is a **Mythic Payload Type**: it installs into an existing Mythic instance and adds the ability to generate, deploy, and control Rust implants across platforms.
+`linky-mythic` is a **Mythic payload type**. It installs into an existing Mythic instance and adds the ability to build and control Rust implants across multiple platforms.
 
-This project does NOT provide a C2 server, a GUI, or a database. **Mythic provides all of that.** This project provides only the implants and their definition container.
+This repository does **not** provide:
+
+- a standalone C2 server
+- a web UI
+- a database
+- a replacement for Mythic itself
+
+Those pieces are provided by **Mythic**. This project provides the payload type container and the implant code.
+
+Quick install:
 
 ```bash
 sudo ./mythic-cli install github https://github.com/Nariod/linky-mythic
@@ -20,110 +33,22 @@ sudo ./mythic-cli install github https://github.com/Nariod/linky-mythic
 
 ## Current status
 
-**Alpha — not yet tested against a live Mythic instance.**
+**Alpha.** The codebase builds and the local validation commands pass, but the project has **not yet been validated against a live Mythic instance**.
 
-Phases 0–5d (project structure, Rust implant migration, wire format, Go builder, command
-definitions, HTTPS configuration, dispatch unification, and MVP fixes) are complete.
-The code compiles and passes all tests (7 Rust + Go build/vet), but has not been validated
-against a live Mythic instance.
+That means this repository should currently be treated as:
 
-Key completed fixes:
-- ✅ **Go dependency migration**: `MythicContainerPkg` (deleted repo) → `MythicContainer v1.6.4` (Go 1.25).
-- ✅ **Shell/inject parameter extraction**: all platform dispatchers now extract structured JSON params instead of passing raw JSON to shell.
-- ✅ `build_client()` now uses `.danger_accept_invalid_certs(true)` and includes User-Agent and timeout.
-- ✅ `run_c2_loop()` defensively handles URL schemes to avoid double `https://` prefixes.
-- ✅ Go builder correctly parses `PayloadUUID` and handles debug build paths.
-- ✅ Dispatch architecture unified across Linux/Windows/macOS using `dispatch_common(command, parameters)`.
-- ✅ `TaskResponse` sets `status: "error"` when a command fails (output starts with "[-]").
-- ✅ Crypto code uses graceful error handling (no `.expect()` panics in `build_mythic_message` / `encrypt_config`).
-- ✅ `list_dir` sorts results for deterministic output.
-- ✅ `sleep_with_jitter` uses integer-only arithmetic (no float precision loss).
-- ✅ Removed fragile `pub use` re-exports from `lib.rs`.
-- ✅ `extract_param` fallback returns `""` instead of raw JSON when the key is absent.
-- ✅ `derive_key` simplified using `.into()`.
-
-Key blocking issues (to be validated in Phase 6):
-- `MythicEncryptsData` setting may cause double encryption — requires live Mythic testing.
-- End-to-end command testing pending.
+- useful for lab work and experimentation
+- promising, but not production-ready
+- something to review carefully before operational use
 
 ---
 
-## Mythic architecture — overview
+## Quick start
 
-Mythic is a modular C2 framework. The core server provides:
-- React Web UI (multi-operator)
-- PostgreSQL (persistence, audit logs)
-- RabbitMQ (message bus between containers)
-- GraphQL API + WebSockets
-
-Agents and C2 profiles are **separate Docker containers** that connect to the core via RabbitMQ.
-
-```
-Mythic Core (docker-compose)           linky-mythic (this repo)
-─────────────────────────────          ──────────────────────────
-React UI                               Payload Type Container (Go)
-   │                                     ├── defines "linky" as an agent
-PostgreSQL ──── RabbitMQ ◄──────────────┤── receives build requests
-   │                │                    └── invokes cargo build
-GraphQL API     gRPC server
-```
-
----
-
-## This project vs original Linky
-
-| Component | Linky (original) | linky-mythic |
-|-----------|-----------------|--------------|
-| GUI / CLI | Custom rustyline CLI | Mythic React UI |
-| C2 server | actix-web (Rust) | Mythic HTTP profile |
-| Database | None (in-memory) | PostgreSQL (Mythic) |
-| Multi-operator | No | Yes |
-| Wire protocol | Custom 3-stage | Mythic standard |
-| Implants | Rust | Rust (adapted) |
-| On-the-fly build | cargo in container | cargo in container |
-| Encryption | Custom AES-256-GCM | AES-256-GCM (Mythic format) |
-
-**What we keep**: all Rust implant code (`links/linux`, `links/windows`, `links/osx`, `links/common`), dispatch logic, and all capabilities (shell, download, upload, injection...).
-
-**What we rewrite**: `run_c2_loop` in `links/common/src/lib.rs` — to speak the Mythic protocol instead of the custom 3-stage protocol.
-
-**What we drop**: the entire `server/` crate (actix-web, routes, CLI, generate, UI). Mythic replaces all of it.
-
----
-
-## Project structure
-
-```
-linky-mythic/
-├── main.go                       # Entry point: StartAndRunForever
-├── go.mod                        # module linky, go 1.25, MythicContainer v1.6.4
-├── Dockerfile                    # Multi-stage: Go builder + Rust toolchain
-├── mythic/
-│   ├── payload_type.go           # Agent metadata (OS, arch, build params)
-│   └── agent_functions/          # Command definitions (Go)
-│       ├── builder.go            # build() → invokes cargo build
-│       ├── shell.go              # Canonical command template
-│       ├── ls.go, cd.go, ...     # One file per command
-│       └── exit.go               # ✅ Implemented
-├── agent_code/                   # Rust implants (Mythic-adapted)
-│   ├── Cargo.toml                # Workspace (linux, windows, osx, common)
-│   └── links/
-│       ├── common/               # Mythic protocol, crypto, dispatch, helpers
-│       │   └── src/
-│       │       ├── lib.rs        # run_c2_loop, AES-256-GCM, wire format
-│       │       └── dispatch.rs   # Cross-platform command dispatch
-│       ├── linux/                # Linux implant (native ps/netstat parsing)
-│       ├── windows/              # Windows implant (injection, integrity level)
-│       └── osx/                  # macOS implant (shell fallback for ps/netstat)
-├── agent_capabilities.json       # mythicmeta.github.io/overview matrix
-├── config.json                   # mythic-cli config
-├── TODO.md                       # Detailed migration plan + audit
-└── README.md
-```
-
----
-
-## Installation
+1. Install and start Mythic.
+2. Install the Mythic HTTP C2 profile.
+3. Install `linky-mythic`.
+4. Open the Mythic UI and generate a payload using `linky`.
 
 ```bash
 # 1. Install and start Mythic
@@ -143,21 +68,26 @@ sudo ./mythic-cli install github https://github.com/Nariod/linky-mythic
 
 ---
 
-## Build prerequisites (inside the container)
+## Payload generation notes
 
-The Payload Type `Dockerfile` embeds the full Rust toolchain and cross-compilation targets. No host dependencies are needed beyond Docker.
+When creating a payload in Mythic:
 
-```dockerfile
-FROM rust:latest
-RUN apt-get install -y musl-tools mingw-w64 binutils
-RUN rustup target add x86_64-unknown-linux-musl x86_64-pc-windows-gnu
-```
+1. Select the `linky` payload type.
+2. Use the `http` C2 profile.
+3. Set the callback values carefully.
 
-Mythic calls `builder.go` → `cargo build` → the binary is delivered to the operator via the UI.
+Recommended HTTP profile values:
+
+- `callback_host`: `https://<your-server-ip-or-domain>`
+- `callback_port`: `443` (or your chosen TLS port)
+- `callback_interval`: `10`
+- `callback_jitter`: `23`
+
+**Important:** the implant supports **HTTPS only**. If `callback_host` does not start with `https://`, the payload will fail at runtime.
 
 ---
 
-## Agent capabilities
+## Supported capabilities
 
 | Command | Linux | Windows | macOS |
 |---------|-------|---------|-------|
@@ -177,40 +107,93 @@ Mythic calls `builder.go` → `cargo build` → the binary is delivered to the o
 
 ---
 
-## Roadmap
+## Known limitations
 
-| Phase | Focus | Status |
-|-------|-------|--------|
-| 0 | Project structure, config.json, Dockerfile, Go stubs | ✅ Done |
-| 1 | Rust implants migration (dispatch, linux, windows, osx, common) | ✅ Done |
-| 2 | Wire format cleanup (hex → direct AES-GCM, unit tests) | ✅ Done |
-| 3 | Go builder: `encryptCallback` AES-GCM + `PAYLOAD_UUID` wiring | ✅ Done |
-| 4 | Go command definitions: individual files, `extract_param` in Rust | ✅ Done |
-| 5 | **Critical bugfixes** (TLS, URL, reqwest feature, CALLBACK_URI) | ✅ Done |
-| 5b | **Go builder bugfixes** (PayloadUUID type, debug path, params) | ✅ Done |
-| 5c | **Dispatch unification** (refactor dispatch_common, error status) | ✅ Done |
-| 5d | **MVP fixes** (Go migration to MythicContainer, shell param extraction, quality) | ✅ Done |
-| 6 | End-to-end test against a live Mythic instance | ⬜ Planned |
-| 7 | Download/Upload via Mythic file store (native file transfer) | ⬜ Planned |
-| 8 | OPSEC hardening (obfstr, key strength, zeroize, anti-panic) | ⬜ Planned |
-| 9 | Process/file browser, Hugo docs, CI pipeline | ⬜ Planned |
+- Live end-to-end validation against Mythic is still pending.
+- `upload` is currently stubbed on all platforms.
+- `inject` and `integrity` are Windows-only.
+- The `MythicEncryptsData` setting may still require live validation to confirm there is no double-encryption issue.
+
+If you plan to use this project beyond a local lab, assume additional testing and review are required first.
 
 ---
 
-## Mythic HTTP profile configuration
+## How it fits into Mythic
 
-When generating a payload in the Mythic UI, the operator must configure the `http` C2 profile:
+Mythic provides the core platform:
 
-- `callback_host`: `https://<your-server-ip-or-domain>` (must start with `https://`)
-- `callback_port`: `443` (or your chosen port)
-- `callback_interval`: default `10` (seconds)
-- `callback_jitter`: default `23` (percent)
+- web UI
+- PostgreSQL
+- RabbitMQ
+- GraphQL / WebSocket services
 
-The implant only supports HTTPS. Any HTTP (non-TLS) callback host will fail at runtime.
+`linky-mythic` runs as a separate payload type container connected to Mythic. Its main job is to define the agent, expose the commands, and build the Rust implant binaries on demand.
+
+```text
+Mythic Core                          linky-mythic
+───────────────────────────          ─────────────────────────
+Web UI                               Payload Type Container
+PostgreSQL            ───────►       Defines the "linky" agent
+RabbitMQ              ◄───────       Receives build requests
+HTTP C2 profile                       Invokes cargo build
+```
 
 ---
 
-## Validation commands
+## linky-mythic vs original Linky
+
+| Component | Original Linky | linky-mythic |
+|-----------|----------------|--------------|
+| Operator interface | Custom CLI | Mythic web UI |
+| Backend / C2 server | Custom Rust server | Mythic + HTTP profile |
+| Database | None | Mythic PostgreSQL |
+| Implant language | Rust | Rust |
+| Multi-operator support | No | Yes |
+| Protocol | Custom | Mythic protocol |
+
+In short: this project keeps the Rust implant approach from Linky, but adapts it to run as a Mythic agent instead of a standalone framework.
+
+---
+
+## Build and container notes
+
+The payload type container embeds the Rust toolchain and cross-compilation targets it needs. In normal Mythic usage, no additional host-side Rust setup should be necessary beyond Docker and Mythic itself.
+
+Build flow:
+
+`Mythic UI` -> `payload build request` -> `builder.go` -> `cargo build` -> artifact returned to Mythic
+
+Container prerequisites baked into the image:
+
+```dockerfile
+FROM rust:latest
+RUN apt-get install -y musl-tools mingw-w64 binutils
+RUN rustup target add x86_64-unknown-linux-musl x86_64-pc-windows-gnu
+```
+
+---
+
+## Project layout
+
+```text
+linky-mythic/
+├── main.go                  # Mythic container entry point
+├── Dockerfile               # Go + Rust build environment
+├── mythic/                  # Payload type definition and command metadata
+├── agent_code/              # Rust implant workspace
+├── config.json              # Mythic payload type configuration
+├── agent_capabilities.json  # Capability summary
+└── README.md
+```
+
+Main directories:
+
+- `mythic/`: Go code for payload registration, command definitions, and build integration
+- `agent_code/`: Rust implant code for Linux, Windows, macOS, and shared protocol / dispatch logic
+
+---
+
+## Development validation commands
 
 ```bash
 # Rust workspace (from agent_code/)
@@ -229,11 +212,21 @@ go vet ./...
 
 ## Security notice
 
-This tool is for **authorized** penetration testing engagements only. Do not use it against systems without explicit written permission.
+This repository should be treated as experimental offensive security software. Use it only in environments you own or where you have explicit written authorization.
 
-Current OPSEC posture (alpha):
+Current OPSEC posture:
+
 - No AMSI/ETW bypass
 - No indirect syscalls
-- No string obfuscation (planned Phase 8)
-- AES key derived from PayloadUUID (weak entropy — planned Phase 8)
+- No string obfuscation
+- AES key derived from `PayloadUUID` is still a weak-entropy design
 - Mythic provides multi-operator support, audit trail, and structured logging
+
+---
+
+## Roadmap
+
+- Validate the agent end-to-end against a live Mythic instance
+- Replace stubbed file transfer behavior with proper Mythic file-store integration
+- Improve OPSEC hardening
+- Expand documentation and operational guidance
