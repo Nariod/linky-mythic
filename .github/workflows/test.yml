@@ -1,0 +1,22 @@
+name: Automated Tests
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+      
+      - name: Set up Docker
+        uses: docker/setup-buildx-action@v1
+      
+      - name: Start Mythic environment
+        run: ./setup_test_env.sh
+      
+      - name: Run tests
+        run: ./run_tests.sh
+      
+      - name: Generate test report
+        run: echo "Test report generated" > test_report.md

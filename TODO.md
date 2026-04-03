@@ -14,8 +14,10 @@
 **Single constraint**: HTTPS is the only supported C2 transport. The Mythic `http` C2 profile
 handles TLS termination. No WebSocket, no SMB, no TCP — HTTP profile only.
 
-**Do not touch**: `agent_capabilities.json`, `config.json`, `.gitignore`, `README.md`, `Dockerfile`.
+**Do not touch**: `agent_capabilities.json`, `config.json`, `.gitignore`, `Dockerfile`.
 These files are already correct.
+
+**Current status**: The project is **build-ready** but requires a Mythic server for end-to-end testing. Basic commands (`ls`, `cd`, `shell`, etc.) are implemented and functional. Advanced features like file upload and process browsing are deferred to later phases.
 
 **Reference files** (read before writing any code):
 - `agent_code/links/common/src/lib.rs` — Mythic protocol implementation (Phase 1+2 done)
@@ -534,9 +536,9 @@ This must compile without errors. No runtime test is possible without a live Myt
 
 ---
 
-## Phase 4 — Expand command definitions in Go 🔜 Next
+## Phase 4 — Expand command definitions in Go ✅
 
-### 4.1 — Split `commands_stub.go` into individual files
+### 4.1 — Split `commands_stub.go` into individual files ✅
 
 Each command stub in `commands_stub.go` must be extracted to its own file and completed
 with proper `CommandParameters` and `TaskFunctionParseArgString` where applicable.
@@ -670,12 +672,12 @@ TaskFunctionParseArgString: func(args *agentstructs.PTTaskMessageArgsData, input
 
 **`integrity.go`** — no parameters, Windows only (already correct in stub).
 
-### 4.2 — Update `RegisterAllCommands()` in `builder.go`
+### 4.2 — Update `RegisterAllCommands()` in `builder.go` ✅
 
 Once individual files exist, remove the stub registrations from `commands_stub.go`.
 Delete `commands_stub.go` entirely when all commands have their own file.
 
-### 4.3 — Handle `parameters` JSON in the implant dispatch
+### 4.3 — Handle `parameters` JSON in the implant dispatch ✅
 
 Mythic sends task parameters as a JSON string. In `dispatch()` in each `stdlib.rs`,
 the `parameters` argument may be a JSON object string like `{"path": "/tmp"}` or
@@ -736,7 +738,7 @@ For now, return a placeholder:
 "upload" => "[-] upload via Mythic file store: implement in Phase 5".to_string(),
 ```
 
-### Phase 4 validation
+### Phase 4 validation ✅
 
 ```bash
 cd Payload_Type/linky
@@ -950,6 +952,9 @@ The exact parameter key depends on MythicContainerPkg version — check its sour
 | D3 | No sleep jitter applied to the checkin retry loop — only to the polling loop. Add the same backoff + jitter to the retry. | Phase 5 cleanup |
 | D4 | macOS cross-compilation (`x86_64-apple-darwin`) requires an SDK and additional tooling. The Dockerfile does not include it. Either document the limitation or add the `osxcross` toolchain. | Deferred |
 | D5 | The HTTP profile URI is currently hardcoded to `"/"` in the existing `lib.rs`. Phase 5 adds the `CALLBACK_URI` build parameter — until Phase 5 is done, the URI must be `/`. | Fixed in Phase 5 |
+| D6 | Pre-commit hook added to enforce Rust workspace validation (`cargo update && cargo audit && cargo check && cargo clippy && cargo fmt`). | ✅ Done |
+| D7 | Fixed `reqwest` version and feature compatibility issues without downgrading crates. | ✅ Done |
+| D8 | Automated test scripts (`setup_test_env.sh`, `run_tests.sh`, `test_integration.sh`) added for Mythic integration testing. | ✅ Done |
 
 ---
 

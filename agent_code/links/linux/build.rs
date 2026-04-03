@@ -1,6 +1,5 @@
 fn main() {
-    let callback = std::env::var("CALLBACK")
-        .unwrap_or_else(|_| "127.0.0.1:443".to_string());
+    let callback = std::env::var("CALLBACK").unwrap_or_else(|_| "127.0.0.1:443".to_string());
     println!("cargo:rustc-env=CALLBACK={}", callback);
 
     let secret = std::env::var("IMPLANT_SECRET").unwrap_or_else(|_| {
