@@ -5,7 +5,9 @@
       "Bash(CALLBACK=x IMPLANT_SECRET=x PAYLOAD_UUID=x cargo check -p link-windows)",
       "Bash(CALLBACK=x IMPLANT_SECRET=x PAYLOAD_UUID=x cargo check -p link-osx)",
       "Bash(go mod:*)",
-      "Bash(go build:*)"
+      "Bash(go build:*)",
+      "Bash(CALLBACK=x IMPLANT_SECRET=x PAYLOAD_UUID=x CALLBACK_URI=/ cargo check --workspace)",
+      "Bash(CALLBACK=x IMPLANT_SECRET=x PAYLOAD_UUID=x CALLBACK_URI=/ cargo test --workspace)"
     ]
   }
 }

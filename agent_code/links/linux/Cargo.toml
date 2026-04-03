@@ -9,4 +9,3 @@ path = "src/main.rs"
 
 [dependencies]
 link-common = { path = "../common" }
-obfstr      = "0.4"

@@ -49,6 +49,13 @@ func payloadDefinition() agentstructs.PayloadType {
 				ParameterType: agentstructs.BUILD_PARAMETER_TYPE_BOOLEAN,
 				DefaultValue:  false,
 			},
+			{
+				Name:          "callback_uri",
+				Description:   "C2 callback URI path (must match HTTP profile configuration)",
+				Required:      false,
+				ParameterType: agentstructs.BUILD_PARAMETER_TYPE_STRING,
+				DefaultValue:  "/",
+			},
 		},
 	}
 }
