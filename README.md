@@ -38,13 +38,14 @@ sudo ./mythic-cli install github https://github.com/Nariod/linky-mythic
 - ✅ Payload type registers and syncs with Mythic via RabbitMQ
 - ✅ HTTP C2 profile integration works
 - ✅ Linux payload builds successfully through Mythic's build pipeline
-- ✅ All unit tests pass (Go build + 7 Rust tests)
+- ✅ Mythic-compatible encryption (AES-256-CBC + HMAC-SHA256)
+- ✅ Chunked file transfer (download + upload) via Mythic file-store API
+- ✅ All unit tests pass (Go build + 9 Rust tests)
 
 That means this repository should currently be treated as:
 
 - functional for lab work, red team exercises, and experimentation
 - promising, but still maturing — review before operational use
-- `upload` and `download` still need Mythic file-store integration (see TODO.md Phase 7)
 
 ---
 
@@ -103,7 +104,7 @@ Recommended HTTP profile values:
 | ps | ✅ | ✅ | ✅ (shell fallback) |
 | netstat | ✅ | ✅ | ✅ (shell fallback) |
 | download | ✅ | ✅ | ✅ |
-| upload | ⬜ stub | ⬜ stub | ⬜ stub |
+| upload | ✅ | ✅ | ✅ |
 | sleep / jitter | ✅ | ✅ | ✅ |
 | killdate | ✅ | ✅ | ✅ |
 | exit | ✅ (Rust) | ✅ (Rust) | ✅ (Rust) |
@@ -114,10 +115,10 @@ Recommended HTTP profile values:
 
 ## Known limitations
 
-- `upload` is currently stubbed on all platforms (Mythic file-store API not yet integrated).
 - `inject` and `integrity` are Windows-only.
 - macOS cross-compilation requires osxcross (not included in the Dockerfile).
 - No AMSI/ETW bypass, no indirect syscalls, no string obfuscation (see Phase 8 in TODO.md).
+- Live callback test (agent checkin → Mythic UI) not yet performed end-to-end.
 
 If you plan to use this project beyond a local lab, assume additional testing and review are required first.
 
@@ -217,9 +218,11 @@ Main directories:
 
 ```bash
 # Rust workspace (from agent_code/)
-CALLBACK=x IMPLANT_SECRET=x PAYLOAD_UUID=x CALLBACK_URI=/ cargo check --workspace
-CALLBACK=x IMPLANT_SECRET=x PAYLOAD_UUID=x CALLBACK_URI=/ cargo test --workspace
-CALLBACK=x IMPLANT_SECRET=x PAYLOAD_UUID=x CALLBACK_URI=/ cargo clippy --workspace -- -D warnings
+# IMPLANT_SECRET must be a valid base64-encoded 32-byte key
+CALLBACK=x IMPLANT_SECRET=$(python3 -c "import base64,os;print(base64.b64encode(os.urandom(32)).decode())") \
+  PAYLOAD_UUID=x CALLBACK_URI=/ cargo check --workspace
+CALLBACK=x IMPLANT_SECRET=$(python3 -c "import base64,os;print(base64.b64encode(os.urandom(32)).decode())") \
+  PAYLOAD_UUID=x CALLBACK_URI=/ cargo test --workspace
 cargo fmt --check
 
 # Go (from project root)
@@ -238,16 +241,17 @@ Current OPSEC posture:
 
 - No AMSI/ETW bypass
 - No indirect syscalls
-- No string obfuscation
-- AES key derived from `PayloadUUID` is still a weak-entropy design
+- No string obfuscation (`obfstr` deferred)
+- AES key is a proper 32-byte random AESPSK from Mythic C2 profile
+- Encryption keys are zeroized in memory after use
 - Mythic provides multi-operator support, audit trail, and structured logging
 
 ---
 
 ## Roadmap
 
-- Replace stubbed file transfer behavior with proper Mythic file-store integration
-- Improve OPSEC hardening (string obfuscation, key zeroization, indirect syscalls)
+- Improve OPSEC hardening (string obfuscation with `obfstr`, indirect syscalls)
 - Implement Mythic `process_browser` and `file_browser` callbacks for structured output
+- Perform end-to-end live callback test (agent binary → Mythic UI checkin)
 - Expand documentation and operational guidance
 - Build a functional CI pipeline with Docker-in-Docker and Mythic

