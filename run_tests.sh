@@ -13,7 +13,7 @@ echo "Running Rust unit tests..."
 CALLBACK=x IMPLANT_SECRET=x PAYLOAD_UUID=x CALLBACK_URI=/ \
     cargo test --workspace || { echo "Rust unit tests failed"; exit 1; }
 
-cd ..
+cd .. || exit 1
 
 echo "All unit tests passed."
 
