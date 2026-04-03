@@ -6,6 +6,8 @@ jobs:
   rust-tests:
     name: Rust unit tests
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -25,6 +27,8 @@ jobs:
   go-build:
     name: Go build check
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
