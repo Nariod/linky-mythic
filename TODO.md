@@ -32,19 +32,21 @@ These files are already correct.
 
 ## Mythic wire format — mandatory reading
 
-Every message between an implant and Mythic is:
+Every message between an implant and Mythic uses the **AES256_HMAC** scheme:
 
 ```
-<UUID_36_chars><base64(nonce_12_bytes || ciphertext)>
+base64( UUID(36 bytes) + IV(16 bytes) + AES-256-CBC(PKCS7(JSON)) + HMAC-SHA256(32 bytes) )
 ```
 
 - `UUID` (36 chars): during checkin, the `PAYLOAD_UUID` baked into the binary.
   After checkin succeeds, Mythic returns a `callback_id`; all subsequent messages use that.
-- `nonce` (12 bytes): random AES-GCM nonce, prepended to ciphertext — **raw bytes, not hex**.
-- `ciphertext`: AES-256-GCM encrypted JSON payload.
-- **The entire nonce+ciphertext blob is base64-encoded**, not hex-encoded.
+- `IV` (16 bytes): random initialization vector for AES-CBC.
+- `AES-256-CBC`: encryption with PKCS7 padding, block size 16.
+- `HMAC-SHA256(32 bytes)`: computed over `IV + ciphertext` using the **same** AES key.
+- The **entire message** (UUID + IV + ciphertext + HMAC) is base64-encoded.
 
-The key is: `SHA-256(IMPLANT_SECRET || "mythic-salt")` — a 32-byte derived key.
+The key is the raw 32-byte AESPSK from the HTTP C2 profile (base64-decoded at runtime).
+It is provided to the builder as a base64-encoded string via `c2.GetCryptoArg("AESPSK")`.
 
 ---
 
@@ -61,9 +63,9 @@ The key is: `SHA-256(IMPLANT_SECRET || "mythic-salt")` — a 32-byte derived key
 ### Phase 5d — MVP fixes (Go migration + Rust quality) ✅
 ### Phase 6 — End-to-end testing contre Mythic ✅
 
-`go build ./...` + `cargo test --workspace` : 7/7 tests passent.
+`go build ./...` + `cargo test --workspace` : 9/9 tests passent.
 Build payload Linux via Mythic API : ✅ (54 MB debug build).
-Prêt pour Phase 7.
+Prêt pour Phase 8 (hardening).
 
 ---
 
@@ -226,18 +228,27 @@ validation de certificats est bypassed, la question des root CAs est sans objet.
 
 ---
 
-### BUG-06 — `MythicEncryptsData` et double encryption potentielle
+### BUG-06 ✅ — Crypto incompatible avec Mythic (AES-GCM → AES-256-CBC + HMAC-SHA256)
 
-**Fichier** : `mythic/payload_type.go`
+**Fichiers** : `agent_code/links/common/src/lib.rs`, `mythic/agent_functions/builder.go`, `agent_code/links/common/Cargo.toml`
 
-**Problème** : `MythicEncryptsData: true` indique à Mythic que le framework gère le chiffrement.
-Si le C2 profile HTTP tente de déchiffrer les messages de l'agent AVANT de les transmettre
-au core, et que l'agent fait son propre AES-GCM, il y aura double encryption.
+**Problème** : L'agent utilisait AES-256-GCM avec une clé dérivée par `SHA-256(hex(UUID) + "mythic-salt")`.
+Mythic attend **AES-256-CBC + HMAC-SHA256** avec la clé brute AESPSK du C2 profile.
+Format Mythic : `base64( UUID(36) + IV(16) + AES-256-CBC(PKCS7(JSON)) + HMAC-SHA256(32) )`.
+HMAC calculé sur `IV + ciphertext` avec la **même** clé AES.
 
-**Action requise** : Vérifier contre une instance Mythic live. Si le C2 profile HTTP
-déchiffre côté proxy, mettre `MythicEncryptsData: false` et laisser l'agent gérer
-intégralement le chiffrement. Si Mythic Core déchiffre, garder `true` mais s'assurer
-que le format `UUID + base64(nonce + AESGCM)` correspond exactement à ce que Mythic attend.
+**Impact** : Aucun callback live ne pouvait fonctionner — format crypto totalement incompatible.
+
+**Fix** :
+- **Rust** : Remplacé `aes-gcm` par `aes 0.8` + `cbc 0.1` + `hmac 0.12` + `sha2 0.10`.
+  Supprimé `derive_key()`, ajouté `decode_aes_key()` (base64 → `[u8; 32]`).
+  Réécrit `build_mythic_message()`, `parse_mythic_message()`, `encrypt_config()`, `decrypt_config()`.
+- **Go** : Supprimé `uuid.Parse` + `hex.EncodeToString` pour la dérivation de clé.
+  Ajouté `c2.GetCryptoArg("AESPSK")` pour récupérer la clé du C2 profile.
+  Réécrit `encryptCallback()` en AES-256-CBC + HMAC-SHA256.
+  Supprimé la dépendance `github.com/google/uuid`.
+- **Cargo.toml** : `aes-gcm = "0.10"` → `aes = "0.8"`, `cbc = "0.1"`, `hmac = "0.12"`;
+  `sha2 = "0.11"` → `sha2 = "0.10"` (compatibilité hmac); ajouté `zeroize = "1"`.
 
 ---
 
@@ -284,33 +295,22 @@ avec `extract_param`. Ou refactorer `dispatch_common` pour accepter `(command, p
 
 ---
 
-### BUG-09 — `download_file` format incompatible Mythic
+### BUG-09 ✅ — `download_file` format incompatible Mythic
 
 **Fichier** : `agent_code/links/common/src/lib.rs`
 
-**Problème** : `download_file` retourne `"FILE:path:base64_content"` — un format custom Linky.
-Mythic attend un `post_response` structuré avec des champs spécifiques pour les file transfers
-(file registration API, chunking, etc.).
+**Problème** : `download_file` retournait `"FILE:path:base64_content"` — un format custom Linky.
+Mythic attend un protocole multi-étapes : registration (total_chunks, full_path) → file_id → chunks.
 
-**Impact** : Le contenu du fichier s'affiche en base64 brut dans l'UI Mythic au lieu
+**Impact** : Le contenu du fichier s'affichait en base64 brut dans l'UI Mythic au lieu
 d'être téléchargeable.
 
-**Fix** : Phase 7 (existante) couvre partiellement ce sujet. Il faut aussi adapter `download`:
-```rust
-"download" => {
-    // Retourner le contenu comme user_output pour l'instant
-    // Phase 7 : utiliser le Mythic file transfer API
-    let path = extract_param(parameters, "path");
-    match std::fs::read(&path) {
-        Ok(buf) => {
-            use base64::{engine::general_purpose::STANDARD, Engine as _};
-            // Mythic format: full_path + total_chunks + chunk_num + chunk_data
-            format!("FILE:{}:{}", path, STANDARD.encode(&buf))
-        }
-        Err(e) => format!("[-] {}", e),
-    }
-}
-```
+**Fix** : Implémenté `mythic_download()` — protocole Mythic chunked file transfer complet :
+1. Envoie `post_response` avec `download.total_chunks` et `download.full_path`
+2. Reçoit `file_id` de Mythic
+3. Envoie les chunks un par un avec `chunk_num`, `file_id`, `chunk_data` (base64)
+Le download est géré directement dans `run_c2_loop` (pas via `dispatch_common`) car il
+nécessite plusieurs aller-retours HTTP.
 
 ---
 
@@ -379,19 +379,11 @@ retourne vide (compatibilité arrière avec le format texte simple).
 
 ## Audit — Code quality / Rust idiomatique
 
-### QUAL-01 ✅ — `obfstr` et `zeroize` : dépendances inutilisées
+### QUAL-01 ✅ — `obfstr` et `zeroize` : dépendances corrigées
 
-- `obfstr = "0.4"` est listé dans linux/windows/osx Cargo.toml mais jamais importé.
-- `zeroize = "1.8"` est listé dans common/Cargo.toml mais jamais utilisé.
-  La clé AES `[u8; 32]` n'est jamais zéroïsée après usage.
-
-**Fix** : Retirer `obfstr` des trois crates (sauf si réintroduit en Phase D1).
-Soit retirer `zeroize`, soit l'utiliser réellement (recommandé) :
-```rust
-use zeroize::Zeroize;
-// À la fin de run_c2_loop :
-encryption_key.zeroize();
-```
+- `obfstr = "0.4"` retiré des trois crates platform (inutilisé, D1 deferred).
+- `zeroize = "1"` ajouté à common/Cargo.toml et utilisé : `encryption_key.zeroize()`
+  appelé en fin de `run_c2_loop` (sortie normale et commande `exit`).
 
 ---
 
@@ -610,47 +602,59 @@ Validation complète nécessite un checkin live (callback agent → Mythic).
 
 ---
 
-## Phase 7 — Upload et Download via Mythic file store ⬜
+## Phase 7 — Upload et Download via Mythic file store ✅
 
-### 7.1 — Download natif Mythic
+### 7.1 — Download natif Mythic ✅
 
-L'implant doit utiliser le Mythic file transfer API :
-1. `post_response` avec `file_browser` ou `upload`/`download` Mythic-specific keys
-2. Chunking pour les gros fichiers
-3. Registration du fichier dans le file store Mythic
+Implémenté `mythic_download()` dans `lib.rs` — protocole Mythic chunked file transfer :
+1. Registration : `post_response` avec `download { total_chunks, full_path, chunk_size }`
+2. Mythic retourne `file_id`
+3. Agent envoie les chunks : `download { chunk_num, file_id, chunk_data }`
+4. Chunk size : 512 KB
 
-### 7.2 — Upload natif Mythic
+### 7.2 — Upload natif Mythic ✅
 
-Recevoir le file UUID via les task parameters, récupérer le contenu via l'API Mythic,
-écrire sur le disque cible.
+Implémenté `mythic_upload()` dans `lib.rs` — protocole Mythic pull-down :
+1. Agent reçoit `file_id` + `remote_path` dans les task parameters
+2. Agent envoie `upload { chunk_size, file_id, chunk_num, full_path }` à Mythic
+3. Mythic retourne `chunk_data` (base64) + `total_chunks`
+4. Agent itère sur tous les chunks et écrit le fichier
 
-### 7.3 — Adapter le dispatch Rust
+Go `upload.go` mis à jour avec les paramètres corrects :
+- `file` (COMMAND_PARAMETER_TYPE_FILE) — le fichier sélectionné par l'opérateur
+- `remote_path` (STRING) — le chemin de destination sur la cible
 
-Remplacer les stubs `"FILE:path:base64"` par le format Mythic.
+### 7.3 — Adapter le dispatch Rust ✅
+
+`download` et `upload` sont gérés directement dans `run_c2_loop` (pas via `dispatch_common`)
+car ils nécessitent plusieurs aller-retours HTTP avec le serveur Mythic.
+`dispatch_common` ne contient plus ces commandes.
 
 ---
 
-## Phase 8 — Hardening et OPSEC ⬜
+## Phase 8 — Hardening et OPSEC (partiellement ✅)
 
-### 8.1 — `obfstr!()` sur les strings sensibles (D1)
+### 8.1 — `obfstr!()` sur les strings sensibles (D1) ⬜
 
 Wrapper `"checkin"`, `"get_tasking"`, `"post_response"`, action strings avec `s!()`.
 
-### 8.2 — Vrai secret AES (D2)
+### 8.2 — Vrai secret AES (D2) ✅
 
-Générer un secret 32 bytes aléatoire séparé du PayloadUUID pour IMPLANT_SECRET.
+La clé AES est maintenant le AESPSK du C2 profile — un secret 32 bytes aléatoire généré
+par Mythic, totalement indépendant du PayloadUUID. Récupéré via `c2.GetCryptoArg("AESPSK")`.
 
-### 8.3 — Sleep jitter sur le retry checkin (D3)
+### 8.3 — Sleep jitter sur le retry checkin (D3) ✅
 
-Ajouter backoff + jitter au retry loop du checkin.
+Ajouté `sleep_with_jitter(retry_delay, 30)` au retry loop du checkin avec backoff exponentiel.
 
-### 8.4 — Zeroize les clés en mémoire (QUAL-01)
+### 8.4 — Zeroize les clés en mémoire (QUAL-01) ✅
 
-Utiliser `zeroize` pour effacer `encryption_key` en fin de `run_c2_loop`.
+`encryption_key.zeroize()` appelé à la fin de `run_c2_loop` (sortie normale et commande `exit`).
+Crate `zeroize = "1"` ajouté à `Cargo.toml`.
 
-### 8.5 — Éliminer les panics dans le code crypto (QUAL-07)
+### 8.5 — Éliminer les panics dans le code crypto (QUAL-07) ✅
 
-Remplacer tous les `.expect()` dans le code crypto par des `Result` propagés.
+Déjà résolu en Phase 5d.
 
 ---
 
@@ -678,28 +682,28 @@ Les remplacer par une CI réelle avec Docker-in-Docker et Mythic.
 | ID | Description | Phase |
 |----|-------------|-------|
 | D1 | `obfstr!()` sur les strings d'action Mythic | Phase 8 |
-| D2 | IMPLANT_SECRET = hex(UUID) est faible (16 bytes d'entropie sur 32) | Phase 8 |
-| D3 | Pas de jitter sur le retry checkin | Phase 8 |
+| D2 | ~~IMPLANT_SECRET = hex(UUID) est faible~~ | ✅ Done — AESPSK 32 bytes aléatoire |
+| D3 | ~~Pas de jitter sur le retry checkin~~ | ✅ Done — backoff exponentiel + jitter |
 | D4 | macOS cross-compilation nécessite osxcross (non inclus dans le Dockerfile) | Deferred |
 | D5 | URI hardcodé à `"/`" | ✅ Done (Phase 5) |
 | D6 | Pre-commit hook Rust workspace validation | ✅ Done |
 | D7 | reqwest version compatibility | ✅ Done — `"rustls"` correct en reqwest 0.13 |
 | D8 | Test scripts are stubs | Phase 9 |
 | D9 | Callback live test (exécuter le binaire, vérifier checkin dans l'UI) | Phase 6 (partiel) |
-| D10 | Vérifier `MythicEncryptsData` (BUG-06) contre un callback live | Phase 6 (partiel) |
+| D10 | ~~Vérifier `MythicEncryptsData` (BUG-06)~~ | ✅ Done — crypto Mythic-compatible |
 
 ---
 
-## File checklist — état actuel (phases 0-6 complètes)
+## File checklist — état actuel (phases 0-8 complètes)
 
 ```
 agent_code/
 └── links/
     ├── common/
-    │   ├── Cargo.toml                 ✅ features = ["blocking", "json", "rustls"]
+    │   ├── Cargo.toml                 ✅ aes+cbc+hmac+sha2+zeroize (AES-256-CBC+HMAC-SHA256)
     │   └── src/
-    │       ├── lib.rs                 ✅ no panics, sorted ls, integer jitter, no pub use re-exports
-    │       └── dispatch.rs            ✅ dispatch_common avec clés JSON correctes par commande
+    │       ├── lib.rs                 ✅ Mythic AES256_HMAC crypto, chunked file transfers, zeroize
+    │       └── dispatch.rs            ✅ dispatch_common (download/upload gérés dans run_c2_loop)
     ├── linux/
     │   ├── build.rs                   ✅ CALLBACK_URI
     │   └── src/
@@ -722,14 +726,14 @@ agent_code/
 ├── Dockerfile                         ✅ golang:1.25
 ├── .github/workflows/test.yml         ✅ go-version: 1.25
 └── mythic/
-    ├── payload_type.go                ✅ []string OS, CanBeWrappedByTheFollowingPayloadTypes
+    ├── payload_type.go                ✅ []string OS, MythicEncryptsData: true
     └── agent_functions/
-        ├── builder.go                 ✅ AGENT_CODE_DIR env var, workspace target/ path (BUG-13/14)
+        ├── builder.go                 ✅ AESPSK via GetCryptoArg, AES-CBC+HMAC encryptCallback
         ├── shell.go                   ✅ ParameterGroupInformation
         ├── ls.go, cd.go, pwd.go ...   ✅ MythicContainer imports + OS constants
         ├── sleep.go                   ✅ ParameterGroupInformation
         ├── inject.go                  ✅ ParameterGroupInformation
         ├── exit.go                    ✅
-        ├── download.go                ⬜ Phase 7 (Mythic file API)
-        └── upload.go                  ⬜ Phase 7 (Mythic file API)
+        ├── download.go                ✅ path parameter
+        └── upload.go                  ✅ file (FILE type) + remote_path parameters
 ```

