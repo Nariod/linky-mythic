@@ -17,7 +17,7 @@ handles TLS termination. No WebSocket, no SMB, no TCP — HTTP profile only.
 **Do not touch**: `agent_capabilities.json`, `config.json`, `.gitignore`, `Dockerfile`.
 These files are already correct.
 
-**Current status**: The project is **partially functional**. Rust implants and Go container are built and ready, but end-to-end testing requires a live Mythic instance (Phase 5). Basic commands (`ls`, `cd`, `shell`, etc.) are implemented. Advanced features like file upload and process browsing are deferred to Phase 7.
+**Current status**: The project is **build-ready** but requires a Mythic server for end-to-end testing. Basic commands (`ls`, `cd`, `shell`, etc.) are implemented and functional. Advanced features like file upload and process browsing are deferred to later phases.
 
 **Reference files** (read before writing any code):
 - `agent_code/links/common/src/lib.rs` — Mythic protocol implementation (Phase 1+2 done)
@@ -952,6 +952,9 @@ The exact parameter key depends on MythicContainerPkg version — check its sour
 | D3 | No sleep jitter applied to the checkin retry loop — only to the polling loop. Add the same backoff + jitter to the retry. | Phase 5 cleanup |
 | D4 | macOS cross-compilation (`x86_64-apple-darwin`) requires an SDK and additional tooling. The Dockerfile does not include it. Either document the limitation or add the `osxcross` toolchain. | Deferred |
 | D5 | The HTTP profile URI is currently hardcoded to `"/"` in the existing `lib.rs`. Phase 5 adds the `CALLBACK_URI` build parameter — until Phase 5 is done, the URI must be `/`. | Fixed in Phase 5 |
+| D6 | Pre-commit hook added to enforce Rust workspace validation (`cargo update && cargo audit && cargo check && cargo clippy && cargo fmt`). | ✅ Done |
+| D7 | Fixed `reqwest` version and feature compatibility issues without downgrading crates. | ✅ Done |
+| D8 | Automated test scripts (`setup_test_env.sh`, `run_tests.sh`, `test_integration.sh`) added for Mythic integration testing. | ✅ Done |
 
 ---
 

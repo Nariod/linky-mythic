@@ -217,6 +217,8 @@ Mythic calls `builder.go` → `cargo build` → the binary is delivered to the o
 
 **Validation Process**: All changes to the Rust workspace are validated using `cargo update && cargo audit && cargo check && cargo clippy && cargo fmt` before being committed. This ensures code quality and security compliance.
 
+**Validation Process**: All changes to the Rust workspace are validated using `cargo update && cargo audit && cargo check && cargo clippy && cargo fmt` before being committed. This ensures code quality and security compliance.
+
 ---
 
 ## Security notice
