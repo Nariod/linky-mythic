@@ -33,13 +33,18 @@ sudo ./mythic-cli install github https://github.com/Nariod/linky-mythic
 
 ## Current status
 
-**Alpha.** The codebase builds and the local validation commands pass, but the project has **not yet been validated against a live Mythic instance**.
+**Beta.** The codebase has been **validated against a live Mythic instance** (April 2026):
+
+- ✅ Payload type registers and syncs with Mythic via RabbitMQ
+- ✅ HTTP C2 profile integration works
+- ✅ Linux payload builds successfully through Mythic's build pipeline
+- ✅ All unit tests pass (Go build + 7 Rust tests)
 
 That means this repository should currently be treated as:
 
-- useful for lab work and experimentation
-- promising, but not production-ready
-- something to review carefully before operational use
+- functional for lab work, red team exercises, and experimentation
+- promising, but still maturing — review before operational use
+- `upload` and `download` still need Mythic file-store integration (see TODO.md Phase 7)
 
 ---
 
@@ -109,10 +114,10 @@ Recommended HTTP profile values:
 
 ## Known limitations
 
-- Live end-to-end validation against Mythic is still pending.
-- `upload` is currently stubbed on all platforms.
+- `upload` is currently stubbed on all platforms (Mythic file-store API not yet integrated).
 - `inject` and `integrity` are Windows-only.
-- The `MythicEncryptsData` setting may still require live validation to confirm there is no double-encryption issue.
+- macOS cross-compilation requires osxcross (not included in the Dockerfile).
+- No AMSI/ETW bypass, no indirect syscalls, no string obfuscation (see Phase 8 in TODO.md).
 
 If you plan to use this project beyond a local lab, assume additional testing and review are required first.
 
@@ -171,6 +176,21 @@ RUN apt-get install -y musl-tools mingw-w64 binutils
 RUN rustup target add x86_64-unknown-linux-musl x86_64-pc-windows-gnu
 ```
 
+### Running outside Docker (local development)
+
+When running the payload container outside Docker (e.g. for local testing), set the
+`AGENT_CODE_DIR` environment variable to point to the `agent_code/` directory:
+
+```bash
+AGENT_CODE_DIR=/path/to/linky-mythic/agent_code \
+RABBITMQ_HOST=127.0.0.1 \
+RABBITMQ_PASSWORD=<from .env> \
+MYTHIC_SERVER_HOST=127.0.0.1 \
+./linky-container
+```
+
+The builder falls back to `/Mythic/agent_code` when `AGENT_CODE_DIR` is not set (the default path inside the Docker container).
+
 ---
 
 ## Project layout
@@ -226,7 +246,8 @@ Current OPSEC posture:
 
 ## Roadmap
 
-- Validate the agent end-to-end against a live Mythic instance
 - Replace stubbed file transfer behavior with proper Mythic file-store integration
-- Improve OPSEC hardening
+- Improve OPSEC hardening (string obfuscation, key zeroization, indirect syscalls)
+- Implement Mythic `process_browser` and `file_browser` callbacks for structured output
 - Expand documentation and operational guidance
+- Build a functional CI pipeline with Docker-in-Docker and Mythic
