@@ -5,8 +5,7 @@ agent_code/links/*/target/
 Cargo.lock
 
 # Go build artifacts
-Payload_Type/linky/linky_payload_type
-Payload_Type/linky/go.sum
+linky_payload_type
 
 # Generated implants
 implants/

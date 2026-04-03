@@ -2,18 +2,21 @@
 
 # Script to run automated tests for linky-mythic
 
+set -euo pipefail
+
 echo "Running automated tests for linky-mythic..."
 
-# Build Rust implants
-cd agent_code/links || { echo "Agent code directory not found"; exit 1; }
+# Run Rust unit tests with required compile-time env vars
+cd agent_code || { echo "agent_code directory not found"; exit 1; }
 
-echo "Building Rust implants..."
-cargo build --release || { echo "Failed to build Rust implants"; exit 1; }
+echo "Running Rust unit tests..."
+CALLBACK=x IMPLANT_SECRET=x PAYLOAD_UUID=x CALLBACK_URI=/ \
+    cargo test --workspace || { echo "Rust unit tests failed"; exit 1; }
 
-# Run integration tests
-cd ../.. || exit 1
+cd ..
 
-echo "Running integration tests..."
-./test_integration.sh || { echo "Integration tests failed"; exit 1; }
+echo "All unit tests passed."
 
-echo "All tests completed successfully."
+# Integration tests require a live Mythic environment.
+# Run them separately after ./setup_test_env.sh:
+#   ./test_integration.sh
