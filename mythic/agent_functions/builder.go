@@ -62,7 +62,13 @@ func Build(input agentstructs.PayloadBuildMessage) agentstructs.PayloadBuildResp
 	// Encrypt the callback address so it cannot be extracted as plaintext from the binary.
 	encryptedCallback := encryptCallback(callbackHost, aesKey)
 
-	agentDir := "/Mythic/agent_code"
+	// When running inside the official Docker container the agent code lives
+	// at /Mythic/agent_code.  For local/dev runs an AGENT_CODE_DIR env var
+	// can override the path.
+	agentDir := os.Getenv("AGENT_CODE_DIR")
+	if agentDir == "" {
+		agentDir = "/Mythic/agent_code"
+	}
 	var (
 		crateDir  string
 		target    string
@@ -127,7 +133,9 @@ func Build(input agentstructs.PayloadBuildMessage) agentstructs.PayloadBuildResp
 	if profile == "dev" {
 		outputProfile = "debug"
 	}
-	binaryPath := filepath.Join(crateDir, "target", target, outputProfile, binName+outputExt)
+	// In a Cargo workspace the target/ directory lives at the workspace root
+	// (agentDir), not inside each individual crate directory.
+	binaryPath := filepath.Join(agentDir, "target", target, outputProfile, binName+outputExt)
 
 	if shellcode && (targetOS == "linux" || targetOS == "macos") {
 		scPath := binaryPath + ".bin"
