@@ -22,16 +22,23 @@ sudo ./mythic-cli install github https://github.com/Nariod/linky-mythic
 
 **Alpha — not yet tested against a live Mythic instance.**
 
-Phases 0–5c (project structure, Rust implant migration, wire format, Go builder, command
-definitions, HTTPS configuration, and dispatch unification) are complete. The code compiles and passes all tests, but has not been validated against a live Mythic instance.
+Phases 0–5d (project structure, Rust implant migration, wire format, Go builder, command
+definitions, HTTPS configuration, dispatch unification, and MVP fixes) are complete.
+The code compiles and passes all tests (7 Rust + Go build/vet), but has not been validated
+against a live Mythic instance.
 
 Key completed fixes:
+- ✅ **Go dependency migration**: `MythicContainerPkg` (deleted repo) → `MythicContainer v1.6.4` (Go 1.25).
+- ✅ **Shell/inject parameter extraction**: all platform dispatchers now extract structured JSON params instead of passing raw JSON to shell.
 - ✅ `build_client()` now uses `.danger_accept_invalid_certs(true)` and includes User-Agent and timeout.
 - ✅ `run_c2_loop()` defensively handles URL schemes to avoid double `https://` prefixes.
 - ✅ Go builder correctly parses `PayloadUUID` and handles debug build paths.
 - ✅ Dispatch architecture unified across Linux/Windows/macOS using `dispatch_common(command, parameters)`.
 - ✅ `TaskResponse` sets `status: "error"` when a command fails (output starts with "[-]").
-- ✅ Unused dependencies (`obfstr`) removed from Cargo.toml files.
+- ✅ Crypto code uses graceful error handling (no `.expect()` panics in `build_mythic_message` / `encrypt_config`).
+- ✅ `list_dir` sorts results for deterministic output.
+- ✅ `sleep_with_jitter` uses integer-only arithmetic (no float precision loss).
+- ✅ Removed fragile `pub use` re-exports from `lib.rs`.
 - ✅ `extract_param` fallback returns `""` instead of raw JSON when the key is absent.
 - ✅ `derive_key` simplified using `.into()`.
 
@@ -89,7 +96,7 @@ GraphQL API     gRPC server
 ```
 linky-mythic/
 ├── main.go                       # Entry point: StartAndRunForever
-├── go.mod                        # module linky, go 1.21
+├── go.mod                        # module linky, go 1.25, MythicContainer v1.6.4
 ├── Dockerfile                    # Multi-stage: Go builder + Rust toolchain
 ├── mythic/
 │   ├── payload_type.go           # Agent metadata (OS, arch, build params)
@@ -182,6 +189,7 @@ Mythic calls `builder.go` → `cargo build` → the binary is delivered to the o
 | 5 | **Critical bugfixes** (TLS, URL, reqwest feature, CALLBACK_URI) | ✅ Done |
 | 5b | **Go builder bugfixes** (PayloadUUID type, debug path, params) | ✅ Done |
 | 5c | **Dispatch unification** (refactor dispatch_common, error status) | ✅ Done |
+| 5d | **MVP fixes** (Go migration to MythicContainer, shell param extraction, quality) | ✅ Done |
 | 6 | End-to-end test against a live Mythic instance | ⬜ Planned |
 | 7 | Download/Upload via Mythic file store (native file transfer) | ⬜ Planned |
 | 8 | OPSEC hardening (obfstr, key strength, zeroize, anti-panic) | ⬜ Planned |
@@ -206,9 +214,9 @@ The implant only supports HTTPS. Any HTTP (non-TLS) callback host will fail at r
 
 ```bash
 # Rust workspace (from agent_code/)
-CALLBACK=x IMPLANT_SECRET=x PAYLOAD_UUID=x cargo check --workspace
-CALLBACK=x IMPLANT_SECRET=x PAYLOAD_UUID=x cargo test --workspace
-CALLBACK=x IMPLANT_SECRET=x PAYLOAD_UUID=x cargo clippy --workspace -- -D warnings
+CALLBACK=x IMPLANT_SECRET=x PAYLOAD_UUID=x CALLBACK_URI=/ cargo check --workspace
+CALLBACK=x IMPLANT_SECRET=x PAYLOAD_UUID=x CALLBACK_URI=/ cargo test --workspace
+CALLBACK=x IMPLANT_SECRET=x PAYLOAD_UUID=x CALLBACK_URI=/ cargo clippy --workspace -- -D warnings
 cargo fmt --check
 
 # Go (from project root)

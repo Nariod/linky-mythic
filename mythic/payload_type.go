@@ -1,7 +1,7 @@
 package mythic
 
 import (
-	agentstructs "github.com/MythicMeta/MythicContainerPkg/agent_structs"
+	agentstructs "github.com/MythicMeta/MythicContainer/agent_structs"
 	"linky/mythic/agent_functions"
 )
 
@@ -19,9 +19,9 @@ func payloadDefinition() agentstructs.PayloadType {
 		Name:                   "linky",
 		FileExtension:          "bin",
 		Author:                 "@your-handle",
-		SupportedOS:            []agentstructs.OS{agentstructs.MACOS, agentstructs.LINUX, agentstructs.WINDOWS},
+		SupportedOS:            []string{agentstructs.SUPPORTED_OS_MACOS, agentstructs.SUPPORTED_OS_LINUX, agentstructs.SUPPORTED_OS_WINDOWS},
 		Wrapper:                false,
-		CanBeWrappedBy:         []string{},
+		CanBeWrappedByTheFollowingPayloadTypes: []string{},
 		SupportsDynamicLoading: false,
 		Description:            "Rust-native cross-platform C2 agent. Minimal, auditable, container-first.",
 		SupportedC2Profiles:    []string{"http"},

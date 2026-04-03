@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	agentstructs "github.com/MythicMeta/MythicContainerPkg/agent_structs"
+	agentstructs "github.com/MythicMeta/MythicContainer/agent_structs"
 	"github.com/google/uuid"
 )
 
@@ -22,7 +22,8 @@ import (
 // the Rust implant, and returns the binary bytes.
 func Build(input agentstructs.PayloadBuildMessage) agentstructs.PayloadBuildResponse {
 	resp := agentstructs.PayloadBuildResponse{
-		Success: false,
+		PayloadUUID: input.PayloadUUID,
+		Success:     false,
 	}
 
 	// Extract build parameters

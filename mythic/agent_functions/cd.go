@@ -1,16 +1,16 @@
 package agent_functions
 
-import agentstructs "github.com/MythicMeta/MythicContainerPkg/agent_structs"
+import agentstructs "github.com/MythicMeta/MythicContainer/agent_structs"
 
 func registerCd() {
 	agentstructs.AllPayloadData.Get("linky").AddCommand(agentstructs.Command{
 		Name: "cd", Description: "Change working directory", HelpString: "cd <path>", Version: 1,
-		CommandAttributes: agentstructs.CommandAttribute{SupportedOS: []agentstructs.OS{agentstructs.LINUX, agentstructs.WINDOWS, agentstructs.MACOS}},
+		CommandAttributes: agentstructs.CommandAttribute{SupportedOS: []string{agentstructs.SUPPORTED_OS_LINUX, agentstructs.SUPPORTED_OS_WINDOWS, agentstructs.SUPPORTED_OS_MACOS}},
 		CommandParameters: []agentstructs.CommandParameter{
 			{
 				Name: "path", CLIName: "path",
 				ParameterType: agentstructs.COMMAND_PARAMETER_TYPE_STRING,
-				Required:      true,
+				ParameterGroupInformation: []agentstructs.ParameterGroupInfo{{ParameterIsRequired: true, GroupName: "Default"}},
 			},
 		},
 		TaskFunctionParseArgString: func(args *agentstructs.PTTaskMessageArgsData, input string) error {

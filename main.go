@@ -3,12 +3,12 @@ package main
 import (
 	"linky/mythic"
 
-	mythicContainer "github.com/MythicMeta/MythicContainerPkg"
+	"github.com/MythicMeta/MythicContainer"
 )
 
 func main() {
 	mythic.Initialize()
-	mythicContainer.StartAndRunForever([]mythicContainer.MythicServices{
-		mythicContainer.MythicServicePayload,
+	MythicContainer.StartAndRunForever([]MythicContainer.MythicServices{
+		MythicContainer.MythicServicePayload,
 	})
 }

