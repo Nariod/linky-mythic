@@ -1,6 +1,10 @@
 package agent_functions
 
-import agentstructs "github.com/MythicMeta/MythicContainerPkg/agent_structs"
+import (
+	"fmt"
+
+	agentstructs "github.com/MythicMeta/MythicContainerPkg/agent_structs"
+)
 
 func registerSleep() {
 	agentstructs.AllPayloadData.Get("linky").AddCommand(agentstructs.Command{
@@ -8,18 +12,23 @@ func registerSleep() {
 		CommandAttributes: agentstructs.CommandAttribute{SupportedOS: []agentstructs.OS{agentstructs.LINUX, agentstructs.WINDOWS, agentstructs.MACOS}},
 		CommandParameters: []agentstructs.CommandParameter{
 			{
-				Name: "args", CLIName: "args",
-				ParameterType: agentstructs.COMMAND_PARAMETER_TYPE_STRING,
+				Name: "seconds", CLIName: "seconds",
+				ParameterType: agentstructs.COMMAND_PARAMETER_TYPE_NUMBER,
 				Required:      true,
 			},
-		},
-		TaskFunctionParseArgString: func(args *agentstructs.PTTaskMessageArgsData, input string) error {
-			return args.SetArgValue("args", input)
+			{
+				Name: "jitter", CLIName: "jitter",
+				ParameterType: agentstructs.COMMAND_PARAMETER_TYPE_NUMBER,
+				Required:      false,
+				DefaultValue:  0,
+			},
 		},
 		TaskFunctionCreateTasking: func(taskData *agentstructs.PTTaskMessageAllData) agentstructs.PTTaskCreateTaskingMessageResponse {
 			resp := agentstructs.PTTaskCreateTaskingMessageResponse{TaskID: taskData.Task.ID, Success: true}
-			a, _ := taskData.Args.GetStringArg("args")
-			resp.DisplayParams = &a
+			seconds, _ := taskData.Args.GetNumberArg("seconds")
+			jitter, _ := taskData.Args.GetNumberArg("jitter")
+			display := fmt.Sprintf("%.0fs jitter=%.0f%%", seconds, jitter)
+			resp.DisplayParams = &display
 			return resp
 		},
 	})

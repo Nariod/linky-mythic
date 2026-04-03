@@ -11,7 +11,11 @@ fn main() {
         .unwrap_or_else(|_| "00000000-0000-0000-0000-000000000000".to_string());
     println!("cargo:rustc-env=PAYLOAD_UUID={}", uuid);
 
+    let callback_uri = std::env::var("CALLBACK_URI").unwrap_or_else(|_| "/".to_string());
+    println!("cargo:rustc-env=CALLBACK_URI={}", callback_uri);
+
     println!("cargo:rerun-if-env-changed=CALLBACK");
     println!("cargo:rerun-if-env-changed=IMPLANT_SECRET");
     println!("cargo:rerun-if-env-changed=PAYLOAD_UUID");
+    println!("cargo:rerun-if-env-changed=CALLBACK_URI");
 }

