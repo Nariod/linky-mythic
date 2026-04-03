@@ -63,6 +63,40 @@ The key is: `SHA-256(IMPLANT_SECRET || "mythic-salt")` — a 32-byte derived key
 
 ---
 
+### Phase 5d — MVP fixes (Go migration + Rust quality) ✅
+
+Critical issues discovered and fixed during MVP audit:
+
+1. **Go migration** : `MythicContainerPkg` repo deleted (404). Migrated to
+   `MythicContainer v1.6.4` (Go 1.25). All 16 command files, builder, payload_type,
+   and main.go updated for new API (`[]string` OS types, `ParameterGroupInformation`,
+   `CanBeWrappedByTheFollowingPayloadTypes`, `PayloadUUID` in build response).
+
+2. **BUG-12** : Shell/inject/cmd/powershell dispatchers passed raw JSON to shell
+   instead of extracting parameters. Fixed all 3 platform crates to use
+   `extract_param(parameters, "command")` with fallback for backward compat.
+
+3. **QUAL-03** : Removed `pub use base64; pub use serde_json;` re-exports from lib.rs.
+4. **QUAL-04** : Replaced float math in `sleep_with_jitter` with integer-only arithmetic.
+5. **QUAL-06** : `list_dir` now sorts results before joining.
+6. **QUAL-07** : Removed all `.expect()` panics from `build_mythic_message` and
+   `encrypt_config` — replaced with match-based error handling.
+7. **Dockerfile** : Updated from `golang:1.21` to `golang:1.25`.
+8. **CI workflow** : Updated `go-version` from `"1.21"` to `"1.25"`.
+
+### Validation (Phase 5d)
+
+```bash
+go build ./... && go vet ./...
+# OK — 0 errors
+
+cd agent_code
+CALLBACK=x IMPLANT_SECRET=x PAYLOAD_UUID=x CALLBACK_URI=/ cargo test --workspace
+# 7 passed; 0 failed (3 common + 4 linux)
+```
+
+---
+
 ## Audit — Bugs critiques (résolus ✅)
 
 Issues found during deep code review, April 2026. **All resolved as of 2026-04-03.**
@@ -320,6 +354,25 @@ responses.push(TaskResponse {
 
 ---
 
+### BUG-12 ✅ — Shell/inject dispatch passe le JSON brut au shell
+
+**Fichiers** : `agent_code/links/{linux,windows,osx}/src/stdlib.rs`
+
+**Problème** : Mythic envoie les paramètres de tâche en JSON structuré, par ex.
+`{"command": "ls -la"}` pour shell ou `{"pid": 1234, "shellcode": "..."}` pour inject.
+Les dispatchers platform passaient la string JSON brute directement à `shell_exec()` /
+`inject_cmd()`, causant l'exécution de `sh -c '{"command": "ls -la"}'` au lieu de
+`sh -c 'ls -la'`.
+
+**Impact** : Toutes les commandes shell/cmd/powershell/inject échouent systématiquement
+sur les 3 plates-formes.
+
+**Fix** : Utiliser `link_common::extract_param(parameters, "command")` (ou `"pid"` / `"shellcode"`)
+avant d'invoquer les fonctions d'exécution. Fallback sur le paramètre brut si l'extraction
+retourne vide (compatibilité arrière avec le format texte simple).
+
+---
+
 ## Audit — Code quality / Rust idiomatique
 
 ### QUAL-01 ✅ — `obfstr` et `zeroize` : dépendances inutilisées
@@ -353,15 +406,17 @@ h.finalize().into()
 
 ---
 
-### QUAL-03 — `pub use base64; pub use serde_json;` anti-pattern
+### QUAL-03 ✅ — `pub use base64; pub use serde_json;` anti-pattern
 
 Re-exporter des dépendances entières au niveau module est fragile (breaking change upstream
 = breaking change pour les consommateurs). Mieux : chaque crate platform dépend directement
 de `base64` et `serde_json` dans son propre Cargo.toml.
 
+**Fix** : Supprimé les deux `pub use` de `lib.rs`. Aucun consommateur n'utilisait ces re-exports.
+
 ---
 
-### QUAL-04 — `sleep_with_jitter` : imprécision float et edge cases
+### QUAL-04 ✅ — `sleep_with_jitter` : imprécision float et edge cases
 
 ```rust
 let range = (base as f64 * jitter_pct as f64 / 100.0) as i64;
@@ -369,6 +424,8 @@ let range = (base as f64 * jitter_pct as f64 / 100.0) as i64;
 - Quand `base` > 2^53, la conversion `u64 → f64` perd de la précision.
 - Quand `base = 0`, `range = 0`, `modulo = 1`, le sleep final est 1s (pas 0).
 - Remplacement recommandé par du calcul entier pur.
+
+**Fix** : Remplacé par `base * jitter_pct as u64 / 100` avec `saturating_sub/add`. Le cas `base = 0` retourne immédiatement via `sleep(0)`.
 
 ---
 
@@ -398,25 +455,31 @@ pub fn extract_param(parameters: &str, key: &str) -> String {
 
 ---
 
-### QUAL-06 — `list_dir` : résultat non trié
+### QUAL-06 ✅ — `list_dir` : résultat non trié
 
 La liste du répertoire est dans l'ordre du filesystem (aléatoire sur ext4).
-Ajouter un `.sort()` avant le `.join("\n")`.
+
+**Fix** : Ajouté `.sort()` avant le `.join("\n")`.
 
 ---
 
-### QUAL-07 — Panics dans le code crypto
+### QUAL-07 ✅ — Panics dans le code crypto
 
 `build_mythic_message` utilise `.expect("encrypt")` — un panic dans un implant en prod
 = process terminé, callback perdu. Préférer un `return` avec message d'erreur.
 
+**Fix** : Remplacé `.expect()` par `match` dans `build_mythic_message` et `encrypt_config`.
+Retourne un string vide / la valeur en clair en cas d'échec crypto.
+
 ---
 
-### QUAL-08 — `go.mod` : package name mismatch potentiel
+### QUAL-08 ✅ — `go.mod` : package name mismatch potentiel
 
 Le `go.mod` importe `MythicContainerPkg` (ancien nom). Le package actuel est
 `MythicContainer` (voir https://github.com/MythicMeta/MythicContainer).
-Vérifier que v1.3.10 existe bien sous l'ancien nom, sinon migrer.
+
+**Fix** : Migré vers `MythicContainer v1.6.4` (Go 1.25). Tous les imports et usages API
+mis à jour dans les 18 fichiers Go (main.go, payload_type.go, builder.go, 15 command files).
 
 ---
 
@@ -569,7 +632,7 @@ Les remplacer par une CI réelle avec Docker-in-Docker et Mythic.
 
 ---
 
-## File checklist — état actuel (phases 0-5c complètes)
+## File checklist — état actuel (phases 0-5d complètes)
 
 ```
 agent_code/
@@ -577,36 +640,37 @@ agent_code/
     ├── common/
     │   ├── Cargo.toml                 ✅ features = ["blocking", "json", "rustls"]
     │   └── src/
-    │       ├── lib.rs                 ✅ build_client, run_c2_loop(callback_uri), error status
+    │       ├── lib.rs                 ✅ no panics, sorted ls, integer jitter, no pub use re-exports
     │       └── dispatch.rs            ✅ dispatch_common avec clés JSON correctes par commande
     ├── linux/
     │   ├── build.rs                   ✅ CALLBACK_URI
     │   └── src/
     │       ├── main.rs                ✅ const CALLBACK_URI
-    │       └── stdlib.rs              ✅ dispatch_common unifié
+    │       └── stdlib.rs              ✅ extract_param pour shell dispatch
     ├── windows/
     │   ├── build.rs                   ✅ CALLBACK_URI
     │   └── src/
     │       ├── main.rs                ✅ const CALLBACK_URI
-    │       └── stdlib.rs              ✅ dispatch_common unifié
+    │       └── stdlib.rs              ✅ extract_param pour shell/cmd/powershell/inject
     └── osx/
         ├── build.rs                   ✅ CALLBACK_URI
         └── src/
             ├── main.rs                ✅ const CALLBACK_URI
-            └── stdlib.rs              ✅ dispatch_common unifié
+            └── stdlib.rs              ✅ extract_param pour shell dispatch
 
 (root)/
-├── main.go                            ✅
-├── go.mod                             ✅
-├── Dockerfile                         ✅
+├── main.go                            ✅ MythicContainer import
+├── go.mod                             ✅ MythicContainer v1.6.4, Go 1.25
+├── Dockerfile                         ✅ golang:1.25
+├── .github/workflows/test.yml         ✅ go-version: 1.25
 └── mythic/
-    ├── payload_type.go                ✅ callback_uri build param
+    ├── payload_type.go                ✅ []string OS, CanBeWrappedByTheFollowingPayloadTypes
     └── agent_functions/
-        ├── builder.go                 ✅ PayloadUUID fix, debug path fix, CALLBACK_URI env
-        ├── shell.go                   ✅
-        ├── ls.go, cd.go, pwd.go ...   ✅
-        ├── sleep.go                   ✅ structured params (seconds + jitter)
-        ├── inject.go                  ✅ structured params (pid + shellcode)
+        ├── builder.go                 ✅ PayloadUUID in response, MythicContainer import
+        ├── shell.go                   ✅ ParameterGroupInformation
+        ├── ls.go, cd.go, pwd.go ...   ✅ MythicContainer imports + OS constants
+        ├── sleep.go                   ✅ ParameterGroupInformation
+        ├── inject.go                  ✅ ParameterGroupInformation
         ├── exit.go                    ✅
         ├── download.go                ⬜ Phase 7 (Mythic file API)
         └── upload.go                  ⬜ Phase 7 (Mythic file API)
