@@ -33,19 +33,41 @@ sudo ./mythic-cli install github https://github.com/Nariod/linky-mythic
 
 ## Current status
 
-**Beta.** The codebase has been **validated against a live Mythic instance** (April 2026):
+**Beta — live-tested.** The codebase has been **validated against a live Mythic instance** with a real implant callback (July 2026):
 
 - ✅ Payload type registers and syncs with Mythic via RabbitMQ
-- ✅ HTTP C2 profile integration works
-- ✅ Linux payload builds successfully through Mythic's build pipeline
+- ✅ HTTP C2 profile integration works (HTTPS required)
+- ✅ Linux payload builds successfully (release: 4.5 MB, debug: 55 MB)
+- ✅ Windows payload builds successfully (cross-compiled with mingw-w64)
 - ✅ Mythic-compatible encryption (AES-256-CBC + HMAC-SHA256)
 - ✅ Chunked file transfer (download + upload) via Mythic file-store API
+- ✅ **Live callback verified** — Linux implant checks in and executes commands
 - ✅ All unit tests pass (Go build + 9 Rust tests)
 
-That means this repository should currently be treated as:
+### Live command test results (Linux)
 
-- functional for lab work, red team exercises, and experimentation
-- promising, but still maturing — review before operational use
+| Command | Status | Notes |
+|---------|--------|-------|
+| whoami | ✅ | user@hostname |
+| pwd | ✅ | current directory |
+| ls | ✅ | sorted listing |
+| cd | ✅ | returns `[+] /new/path` |
+| pid | ✅ | process ID |
+| info | ✅ | OS, arch, user, hostname, IP |
+| ps | ✅ | process list |
+| netstat | ✅ | network connections |
+| shell | ✅ | shell command execution |
+| download | ✅ | chunked file transfer |
+| sleep | ✅ | interval + jitter (fix applied) |
+| killdate | ✅ | agent expiration |
+| upload | ⬜ | needs Mythic UI modal (not API-testable) |
+| exit | ⬜ | not tested (process killed manually) |
+
+Production readiness:
+
+- suitable for lab work, red team exercises, and experimentation
+- core functionality is validated; OPSEC hardening still in progress
+- review [TODO.md](TODO.md) for the full roadmap and known issues
 
 ---
 
@@ -116,11 +138,13 @@ Recommended HTTP profile values:
 ## Known limitations
 
 - `inject` and `integrity` are Windows-only.
-- macOS cross-compilation requires osxcross (not included in the Dockerfile).
-- No AMSI/ETW bypass, no indirect syscalls, no string obfuscation (see Phase 8 in TODO.md).
-- Live callback test (agent checkin → Mythic UI) not yet performed end-to-end.
+- macOS cross-compilation requires osxcross and cmake (not included in the Dockerfile); `aws-lc-sys` fails without them.
+- **HTTPS only** — the builder strips the HTTP scheme from callback_host and the implant always uses HTTPS. Plain HTTP C2 profiles are not supported.
+- No AMSI/ETW bypass, no indirect syscalls, no string obfuscation (see Phase 12 in TODO.md).
+- Plaintext strings visible in binary (`strings` analysis reveals action names, user-agent, cargo paths).
+- Binary size: 4.5 MB for Linux release (Hannibal achieves 25-45 KB for Windows).
 
-If you plan to use this project beyond a local lab, assume additional testing and review are required first.
+If you plan to use this project beyond a local lab, assume additional OPSEC hardening and testing are required first.
 
 ---
 
@@ -250,8 +274,31 @@ Current OPSEC posture:
 
 ## Roadmap
 
-- Improve OPSEC hardening (string obfuscation with `obfstr`, indirect syscalls)
-- Implement Mythic `process_browser` and `file_browser` callbacks for structured output
-- Perform end-to-end live callback test (agent binary → Mythic UI checkin)
-- Expand documentation and operational guidance
-- Build a functional CI pipeline with Docker-in-Docker and Mythic
+See [TODO.md](TODO.md) for the detailed phase-by-phase plan.
+
+### Near-term (Phases 10-11)
+- Add missing file operations: `cp`, `mv`, `rm`, `mkdir`, `execute` (parity with Hannibal)
+- Replace `reqwest` with `ureq` to reduce binary size (target: < 2 MB)
+- Replace `aws-lc-sys` with `ring` to fix macOS cross-compilation
+- Support plain HTTP (not just HTTPS) C2 profiles
+- Conditional command compilation via Cargo features
+
+### Medium-term (Phases 12-13)
+- OPSEC hardening: `obfstr` string obfuscation, cargo path stripping, configurable user-agent
+- Mythic `process_browser` and `file_browser` structured output
+- Sleep obfuscation research (Windows — Ekko-style)
+- Indirect syscalls (Windows — `ntapi` crate)
+- Full macOS support with osxcross in Dockerfile
+- ARM64 support (`aarch64-unknown-linux-musl`, `aarch64-apple-darwin`)
+
+### Long-term (Phases 14-15)
+- Dynamic module loading (Rust equivalent of Hannibal's HBIN)
+- SOCKS proxy for network pivoting
+- CI pipeline with Docker-in-Docker Mythic integration tests
+- Hugo documentation site
+
+### Competitor reference
+
+This project aims for feature parity with [Hannibal](https://github.com/silentwarble/Hannibal)
+while maintaining its advantages: cross-platform support (3 OS), Rust memory safety,
+maintainable codebase, and unit test coverage.

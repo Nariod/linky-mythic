@@ -8,7 +8,9 @@ fn username() -> String {
 }
 
 fn hostname() -> String {
+    // Try /etc/hostname first, then /proc/sys/kernel/hostname, then "unknown"
     std::fs::read_to_string("/etc/hostname")
+        .or_else(|_| std::fs::read_to_string("/proc/sys/kernel/hostname"))
         .map(|s| s.trim().to_string())
         .unwrap_or_else(|_| "unknown".into())
 }
