@@ -30,6 +30,7 @@ func Build(input agentstructs.PayloadBuildMessage) agentstructs.PayloadBuildResp
 	targetOS, _ := input.BuildParameters.GetStringArg("target_os")
 	shellcode, _ := input.BuildParameters.GetBooleanArg("shellcode")
 	debug, _ := input.BuildParameters.GetBooleanArg("debug")
+	indirectSyscalls, _ := input.BuildParameters.GetBooleanArg("indirect_syscalls")
 
 	payloadUUID := input.PayloadUUID
 
@@ -120,6 +121,9 @@ func Build(input agentstructs.PayloadBuildMessage) agentstructs.PayloadBuildResp
 		"--profile", profile,
 		"--target", target,
 		"--quiet",
+	}
+	if indirectSyscalls && targetOS == "windows" {
+		args = append(args, "--features", "indirect-syscalls")
 	}
 	rustflags := "--remap-path-prefix=" + crateDir + "=. -C debuginfo=0"
 	cmd := exec.Command("cargo", args...)

