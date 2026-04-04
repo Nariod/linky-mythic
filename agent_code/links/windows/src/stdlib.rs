@@ -331,7 +331,10 @@ fn inject_shellcode(pid: u32, shellcode: &[u8]) -> String {
             proc,
             None,
             0,
-            Some(std::mem::transmute(addr)),
+            Some(std::mem::transmute::<
+                *mut std::ffi::c_void,
+                unsafe extern "system" fn(*mut std::ffi::c_void) -> u32,
+            >(addr)),
             None,
             0,
             None,
