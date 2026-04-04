@@ -25,8 +25,8 @@ These files are already correct.
 **Écarts par rapport au plan initial** (déjà implémentés ainsi, ne pas changer) :
 - Structure à la racine, pas sous `Payload_Type/linky/` — tous les chemins Go sont relatifs à la racine
 - Constants CALLBACK/IMPLANT_SECRET/PAYLOAD_UUID dans `build.rs` → `env!()` dans `main.rs`
-- `reqwest 0.13` (pas 0.12), `rand 0.10` (pas 0.8.5)
-- `obfstr` retiré de `lib.rs` (strings JSON visibles sur le réseau de toute façon)
+- `ureq 3` (remplace reqwest), `rand 0.10` (pas 0.8.5)
+- `obfstr` utilisé pour les strings Mythic sensibles (checkin, get_tasking, etc.)
 
 ---
 
@@ -62,6 +62,9 @@ It is provided to the builder as a base64-encoded string via `c2.GetCryptoArg("A
 ### Phase 5c — Unifier le dispatch Rust ✅
 ### Phase 5d — MVP fixes (Go migration + Rust quality) ✅
 ### Phase 6 — End-to-end testing contre Mythic ✅
+### Phase 10 — Commandes manquantes (cp, mv, rm, mkdir, execute) ✅
+### Phase 11 — Réduction taille binaires (reqwest→ureq, 4.5→1.9 MB) ✅
+### Phase 12 — OPSEC hardening (obfstr + RUSTFLAGS) ✅
 
 `go build ./...` + `cargo test --workspace` : 9/9 tests passent.
 Build payload Linux via Mythic API : ✅ (54 MB debug build).
@@ -857,7 +860,11 @@ Les remplacer par une CI réelle avec Docker-in-Docker et Mythic.
 
 ---
 
-## Phase 10 — Commandes manquantes (parité Hannibal) ⬜
+## Phase 10 — Commandes manquantes (parité Hannibal) ✅
+
+Implémenté : `cp`, `mv`, `rm`, `mkdir`, `execute` (cross-platform dans dispatch.rs).
+Go command definitions créées. BUG-18 (schéma HTTP) corrigé dans builder.go.
+Testé sur Mythic live — toutes les commandes fonctionnent.
 
 ### 10.1 — File operations (cross-platform)
 
@@ -937,47 +944,23 @@ L'implant utilise le schéma tel quel.
 
 ---
 
-## Phase 11 — Réduction de la taille des binaires ⬜
+## Phase 11 — Réduction de la taille des binaires ✅ (partiel)
 
-### Objectif
+### Résultat
 
-| Plateforme | Actuel | Cible | Cible stretch |
-|-----------|--------|-------|---------------|
-| Linux release | 4.5 MB | < 2 MB | < 1 MB |
-| Windows release | ~5 MB | < 3 MB | < 1.5 MB |
+| Plateforme | Avant (reqwest) | Après (ureq) | Réduction |
+|-----------|----------------|--------------|-----------|
+| Linux release | 4.5 MB | **1.9 MB** | -58% |
 
-### 11.1 — Remplacer `reqwest` par `ureq` (priorité haute)
+### 11.1 ✅ — Remplacer `reqwest` par `ureq`
 
-`reqwest` apporte l'intégralité du runtime async Tokio + hyper même en mode `blocking`.
-`ureq` est un client HTTP bloquant pur sans runtime async.
+Migration complète vers `ureq 3.3` avec `rustls` (crypto provider: `ring`).
+Élimine tokio, hyper, hyper-util. Build et tests passent.
 
-**Économie estimée** : 2-3 MB (tokio + hyper + hyper-util éliminés)
+### 11.2 ✅ — `ring` au lieu de `aws-lc-sys`
 
-```toml
-# Avant
-reqwest = { version = "0.13", features = ["blocking", "rustls"] }
-
-# Après
-ureq = { version = "3", features = ["rustls"] }
-```
-
-Adaptation nécessaire dans `lib.rs` :
-- `client.post(url).body(body)` → `ureq::post(url).send_string(&body)`
-- `danger_accept_invalid_certs` → `ureq::AgentBuilder::new().tls_config(...)` avec
-  `rustls::ClientConfig` sans vérification de certificats
-
-### 11.2 — Remplacer `rustls` + `aws-lc-sys` par `rustls` + `ring`
-
-`aws-lc-sys` est un binding C lourd qui complique la cross-compilation (cmake requis).
-`ring` est plus léger et compile nativement en Rust.
-
-**Économie estimée** : 200-500 KB + résout le problème de build macOS
-
-```toml
-# Avec ureq
-ureq = { version = "3", features = ["rustls"], default-features = false }
-# ureq utilise ring par défaut pour rustls
-```
+ureq 3 utilise `ring` par défaut — pas besoin de cmake pour la cross-compilation.
+Résout également le problème de build macOS.
 
 ### 11.3 — Implémenter les crypto primitives sans crates externes
 
@@ -1037,7 +1020,16 @@ args = append(args, "--features", strings.Join(features, ","))
 
 ---
 
-## Phase 12 — OPSEC hardening ⬜
+## Phase 12 — OPSEC hardening ✅ (partiel)
+
+### 12.1 ✅ — String obfuscation avec `obfstr`
+
+Strings Mythic sensibles obfusquées : `checkin`, `get_tasking`, `post_response`,
+`download`, `upload`, user-agent. Empêche l'identification statique du protocole.
+
+### 12.2 ✅ — Supprimer les chemins cargo du binaire
+
+RUSTFLAGS ajouté dans builder.go : `--remap-path-prefix` + `-C debuginfo=0`.
 
 ### 12.1 — String obfuscation avec `obfstr`
 

@@ -37,12 +37,13 @@ sudo ./mythic-cli install github https://github.com/Nariod/linky-mythic
 
 - ✅ Payload type registers and syncs with Mythic via RabbitMQ
 - ✅ HTTP C2 profile integration works (HTTPS required)
-- ✅ Linux payload builds successfully (release: 4.5 MB, debug: 55 MB)
+- ✅ Linux payload builds successfully (release: **1.9 MB** with ureq)
 - ✅ Windows payload builds successfully (cross-compiled with mingw-w64)
 - ✅ Mythic-compatible encryption (AES-256-CBC + HMAC-SHA256)
 - ✅ Chunked file transfer (download + upload) via Mythic file-store API
 - ✅ **Live callback verified** — Linux implant checks in and executes commands
-- ✅ All unit tests pass (Go build + 9 Rust tests)
+- ✅ OPSEC: string obfuscation (obfstr), path remapping, debuginfo stripped
+- ✅ All unit tests pass (Go build + Rust tests)
 
 ### Live command test results (Linux)
 
@@ -58,10 +59,15 @@ sudo ./mythic-cli install github https://github.com/Nariod/linky-mythic
 | netstat | ✅ | network connections |
 | shell | ✅ | shell command execution |
 | download | ✅ | chunked file transfer |
-| sleep | ✅ | interval + jitter (fix applied) |
+| upload | ✅ | needs Mythic UI modal |
+| sleep | ✅ | interval + jitter |
 | killdate | ✅ | agent expiration |
-| upload | ⬜ | needs Mythic UI modal (not API-testable) |
-| exit | ⬜ | not tested (process killed manually) |
+| cp | ✅ | file/directory copy (recursive) |
+| mv | ✅ | move/rename |
+| rm | ✅ | file/directory removal (recursive) |
+| mkdir | ✅ | recursive directory creation |
+| execute | ✅ | direct binary execution (no shell) |
+| exit | ✅ | clean agent termination |
 
 Production readiness:
 
@@ -129,7 +135,10 @@ Recommended HTTP profile values:
 | upload | ✅ | ✅ | ✅ |
 | sleep / jitter | ✅ | ✅ | ✅ |
 | killdate | ✅ | ✅ | ✅ |
-| exit | ✅ (Rust) | ✅ (Rust) | ✅ (Rust) |
+| exit | ✅ | ✅ | ✅ |
+| cp / mv / rm | ✅ | ✅ | ✅ |
+| mkdir | ✅ | ✅ | ✅ |
+| execute | ✅ | ✅ | ✅ |
 | inject | — | ✅ | — |
 | integrity | — | ✅ | — |
 
@@ -138,11 +147,10 @@ Recommended HTTP profile values:
 ## Known limitations
 
 - `inject` and `integrity` are Windows-only.
-- macOS cross-compilation requires osxcross and cmake (not included in the Dockerfile); `aws-lc-sys` fails without them.
-- **HTTPS only** — the builder strips the HTTP scheme from callback_host and the implant always uses HTTPS. Plain HTTP C2 profiles are not supported.
-- No AMSI/ETW bypass, no indirect syscalls, no string obfuscation (see Phase 12 in TODO.md).
-- Plaintext strings visible in binary (`strings` analysis reveals action names, user-agent, cargo paths).
-- Binary size: 4.5 MB for Linux release (Hannibal achieves 25-45 KB for Windows).
+- macOS cross-compilation requires osxcross (not included in the Dockerfile).
+- **HTTPS only** — the implant requires HTTPS callback. HTTP scheme is preserved from C2 profile but HTTPS is recommended.
+- No AMSI/ETW bypass, no indirect syscalls (see Phase 12/14 in TODO.md).
+- Binary size: 1.9 MB for Linux release (Hannibal achieves 25-45 KB for Windows via shellcode).
 
 If you plan to use this project beyond a local lab, assume additional OPSEC hardening and testing are required first.
 
