@@ -56,6 +56,13 @@ func payloadDefinition() agentstructs.PayloadType {
 				ParameterType: agentstructs.BUILD_PARAMETER_TYPE_STRING,
 				DefaultValue:  "/",
 			},
+			{
+				Name:          "indirect_syscalls",
+				Description:   "Use indirect syscalls for process injection (Windows only, bypasses user-mode hooks)",
+				Required:      false,
+				ParameterType: agentstructs.BUILD_PARAMETER_TYPE_BOOLEAN,
+				DefaultValue:  false,
+			},
 		},
 	}
 }
