@@ -1148,6 +1148,26 @@ aarch64-apple-darwin
 
 ---
 
+## Phase 13.5 — Indirect Syscalls (Windows) ✅
+
+### 13.5.1 — syscalls-rs integration ✅
+- [x] Ajout de la dépendance `syscalls` (git, feature `_INDIRECT_`)
+- [x] Feature flag `indirect-syscalls` dans `link-windows/Cargo.toml`
+- [x] Module `nt_inject.rs` : wrappers NT API via `syscall!()` macro
+  - `NtOpenProcess`, `NtAllocateVirtualMemory`, `NtWriteVirtualMemory`
+  - `NtProtectVirtualMemory`, `NtCreateThreadEx`, `NtClose`
+- [x] Compilation conditionnelle dans `inject_shellcode` (`#[cfg(feature)]`)
+- [x] Paramètre de build `indirect_syscalls` dans Mythic (payload_type.go + builder.go)
+- [x] Cross-compilation vérifiée (x86_64-pc-windows-gnu, avec et sans feature)
+- [x] Clippy clean, cargo fmt, tous les tests passent
+
+### 13.5.2 — Tests sur cible Windows ⬜
+- [ ] Test d'injection avec indirect syscalls sur Windows réel
+- [ ] Vérification de la résolution SSN au runtime (PEB walking)
+- [ ] Test avec EDR actif (Windows Defender, CrowdStrike, etc.)
+
+---
+
 ## Phase 14 — Post-exploitation avancée ⬜
 
 ### 14.1 — Dynamic module loading (équivalent HBIN)
