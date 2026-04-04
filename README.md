@@ -43,6 +43,7 @@ sudo ./mythic-cli install github https://github.com/Nariod/linky-mythic
 - ✅ Chunked file transfer (download + upload) via Mythic file-store API
 - ✅ **Live callback verified** — Linux implant checks in and executes commands
 - ✅ OPSEC: string obfuscation (`obfstr`), path remapping, debuginfo stripped
+- ✅ **Indirect syscalls** (Windows): optional `inject` via [syscalls-rs](https://github.com/Nariod/syscalls-rs) — NtAPI calls bypass user-mode hooks
 - ✅ All unit tests pass (Go build + 9 Rust tests)
 
 ### Binary sizes
@@ -216,7 +217,7 @@ Competitive reference: [silentwarble/Hannibal](https://github.com/silentwarble/H
 | Platforms | Windows x64 only | Linux + Windows + macOS |
 | Language | C (PIC, custom linker) | Rust (safe, idiomatic) |
 | Sleep obfuscation | Ekko (RC4 .text encryption) | Not yet |
-| Indirect syscalls | N/A (no inject) | Planned ([syscalls-rs](https://github.com/Nariod/syscalls-rs)) |
+| Indirect syscalls | N/A (no inject) | ✅ Optional ([syscalls-rs](https://github.com/Nariod/syscalls-rs)) |
 | String obfuscation | Hash compile-time (ROL5) | `obfstr` compile-time encryption |
 | Post-exploitation | HBIN dynamic modules | Not yet |
 | Memory safety | Manual (C) | Compiler-enforced (Rust) |
@@ -227,8 +228,8 @@ Competitive reference: [silentwarble/Hannibal](https://github.com/silentwarble/H
 ## Known limitations
 
 - macOS cross-compilation requires osxcross (not included in Dockerfile).
-- No AMSI/ETW bypass, no indirect syscalls yet (see roadmap).
-- `inject` uses Win32 APIs directly (detectable by EDR user-mode hooks).
+- No AMSI/ETW bypass yet (see roadmap).
+- `inject` uses Win32 APIs by default; enable `indirect-syscalls` feature for NT API path via syscalls-rs.
 - `upload` requires the Mythic web UI modal (not testable via GraphQL API alone).
 - Binary size gap with pure-C agents like Hannibal (1.9 MB vs 25-45 KB).
 
@@ -322,7 +323,7 @@ cargo fmt --check
 | Debug info stripped (`-C debuginfo=0`) | ✅ Done |
 | Release binary stripped + LTO + `panic=abort` | ✅ Done |
 | Configurable User-Agent | ⬜ Planned |
-| Indirect syscalls (Windows inject) | ⬜ Planned ([syscalls-rs](https://github.com/Nariod/syscalls-rs)) |
+| Indirect syscalls (Windows inject) | ✅ Optional (feature flag `indirect-syscalls`) |
 | Sleep obfuscation (Windows) | ⬜ Research |
 | AMSI/ETW bypass (Windows) | ⬜ Planned |
 | Conditional command compilation (Cargo features) | ⬜ Planned |
@@ -341,7 +342,6 @@ See [TODO.md](TODO.md) for the detailed phase-by-phase plan.
 - CI pipeline (replace stub test scripts with GitHub Actions)
 
 ### Medium-term
-- Indirect syscalls for Windows inject via [syscalls-rs](https://github.com/Nariod/syscalls-rs)
 - Sleep obfuscation research (Windows — Ekko-style)
 - Full macOS support with osxcross in Dockerfile
 - ARM64 targets (`aarch64-unknown-linux-musl`, `aarch64-apple-darwin`)
