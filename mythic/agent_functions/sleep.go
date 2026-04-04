@@ -2,6 +2,7 @@ package agent_functions
 
 import (
 	"fmt"
+	"strings"
 
 	agentstructs "github.com/MythicMeta/MythicContainer/agent_structs"
 )
@@ -22,6 +23,19 @@ func registerSleep() {
 				DefaultValue:             0,
 				ParameterGroupInformation: []agentstructs.ParameterGroupInfo{{ParameterIsRequired: false, GroupName: "Default"}},
 			},
+		},
+		TaskFunctionParseArgString: func(args *agentstructs.PTTaskMessageArgsData, input string) error {
+			parts := strings.Fields(input)
+			if len(parts) < 1 {
+				return fmt.Errorf("usage: sleep <seconds> [jitter%%]")
+			}
+			if err := args.SetArgValue("seconds", parts[0]); err != nil {
+				return err
+			}
+			if len(parts) > 1 {
+				return args.SetArgValue("jitter", parts[1])
+			}
+			return nil
 		},
 		TaskFunctionCreateTasking: func(taskData *agentstructs.PTTaskMessageAllData) agentstructs.PTTaskCreateTaskingMessageResponse {
 			resp := agentstructs.PTTaskCreateTaskingMessageResponse{TaskID: taskData.Task.ID, Success: true}
