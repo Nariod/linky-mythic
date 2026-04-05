@@ -22,7 +22,7 @@ RUN rustup target add \
 
 WORKDIR /Mythic
 
-COPY --from=go-builder /build/linky_payload_type .
+COPY --from=go-builder /build/linky_payload_type /usr/local/bin/linky_payload_type
 COPY agent_code/ ./agent_code/
 
 ENV MYTHIC_SERVER_HOST="127.0.0.1"
@@ -35,4 +35,4 @@ ENV MYTHIC_RABBITMQ_VHOST="mythic_vhost"
 ENV MYTHIC_CONTAINER_NAME="linky"
 ENV DEBUG_LEVEL="warning"
 
-CMD ["./linky_payload_type"]
+CMD ["/usr/local/bin/linky_payload_type"]
