@@ -7,7 +7,7 @@ set -euo pipefail
 echo "Running automated tests for linky-mythic..."
 
 # Run Rust unit tests with required compile-time env vars
-cd agent_code || { echo "agent_code directory not found"; exit 1; }
+cd Payload_Type/linky/agent_code || { echo "agent_code directory not found"; exit 1; }
 
 echo "Running Rust unit tests..."
 CALLBACK=x IMPLANT_SECRET=x PAYLOAD_UUID=x CALLBACK_URI=/ \

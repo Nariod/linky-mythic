@@ -1,6 +1,6 @@
 # Rust build artifacts
-agent_code/target/
-agent_code/links/*/target/
+Payload_Type/linky/agent_code/target/
+Payload_Type/linky/agent_code/links/*/target/
 **/*.rs.bk
 Cargo.lock
 
