@@ -232,6 +232,7 @@ Competitive reference: [silentwarble/Hannibal](https://github.com/silentwarble/H
 - `inject` uses Win32 APIs by default; enable `indirect-syscalls` feature for NT API path via syscalls-rs.
 - `upload` requires the Mythic web UI modal (not testable via GraphQL API alone).
 - Binary size gap with pure-C agents like Hannibal (1.9 MB vs 25-45 KB).
+- **SELinux (Fedora/RHEL)**: requires `chcon` relabeling after `mythic-cli install` (see Build notes).
 
 ---
 
@@ -243,17 +244,32 @@ Container prerequisites baked into the image:
 
 ```dockerfile
 FROM golang:1.25 AS go-builder
-# ... builds Go payload type service
+# ... builds Go payload type service (CGO_ENABLED=0 for static binary)
 
 FROM rust:latest
 RUN apt-get install -y musl-tools mingw-w64 clang lld binutils
 RUN rustup target add x86_64-unknown-linux-musl x86_64-pc-windows-gnu
 ```
 
+> **Important**: The Go binary is installed to `/usr/local/bin/` (not `/Mythic/`).
+> Mythic bind-mounts `InstalledServices/linky/` onto `/Mythic/` at runtime,
+> which would hide any binary placed there.
+
+### SELinux (Fedora / RHEL)
+
+On systems with SELinux enforcing, Docker bind mounts are blocked by default.
+After installing linky, relabel the files:
+
+```bash
+sudo chcon -Rt svirt_sandbox_file_t /path/to/Mythic/InstalledServices/linky/
+```
+
+Without this, `cargo build` inside the container will fail with permission errors.
+
 ### Running outside Docker (local development)
 
 ```bash
-AGENT_CODE_DIR=/path/to/linky-mythic/agent_code \
+AGENT_CODE_DIR=/path/to/linky-mythic/Payload_Type/linky/agent_code \
 RABBITMQ_HOST=127.0.0.1 \
 RABBITMQ_PASSWORD=<from Mythic .env> \
 MYTHIC_SERVER_HOST=127.0.0.1 \
@@ -268,27 +284,30 @@ The builder falls back to `/Mythic/agent_code` when `AGENT_CODE_DIR` is not set 
 
 ```text
 linky-mythic/
-├── main.go                       # Mythic container entry point
-├── go.mod                        # Go 1.25, MythicContainer v1.6.4
-├── Dockerfile                    # Multi-stage: Go builder + Rust toolchain
-├── config.json                   # Mythic payload type configuration
-├── agent_capabilities.json       # Capability summary
-├── mythic/
-│   └── agent_functions/
-│       ├── builder.go            # Build orchestration + AES callback encryption
-│       ├── shell.go ... exit.go  # 21 command definitions (Go ↔ Mythic)
-│       └── utils.go              # Shared helpers (splitArgs)
-└── agent_code/                   # Rust workspace
-    ├── Cargo.toml                # Workspace: release profile (LTO, strip, opt-z)
-    └── links/
-        ├── common/
-        │   ├── Cargo.toml        # ureq 3, obfstr, aes+cbc+hmac+sha2, zeroize
-        │   └── src/
-        │       ├── lib.rs        # C2 loop, crypto, file transfers, HTTP client
-        │       └── dispatch.rs   # Cross-platform command dispatch
-        ├── linux/                # Linux-specific: /proc parsing, hostname fallback
-        ├── windows/              # Windows-specific: inject, integrity, tasklist
-        └── osx/                  # macOS-specific: shell fallbacks for ps/netstat
+├── config.json                             # Mythic payload type configuration
+├── agent_capabilities.json                 # Capability summary
+├── Payload_Type/
+│   └── linky/
+│       ├── Dockerfile                      # Multi-stage: Go builder + Rust toolchain
+│       ├── main.go                         # Mythic container entry point
+│       ├── go.mod                          # Go 1.25, MythicContainer v1.6.4
+│       ├── mythic/
+│       │   └── agent_functions/
+│       │       ├── builder.go              # Build orchestration + AES callback encryption
+│       │       ├── shell.go ... exit.go    # 21 command definitions (Go ↔ Mythic)
+│       │       └── utils.go               # Shared helpers (splitArgs)
+│       └── agent_code/                     # Rust workspace
+│           ├── Cargo.toml                  # Workspace: release profile (LTO, strip, opt-z)
+│           └── links/
+│               ├── common/
+│               │   ├── Cargo.toml          # ureq 3, obfstr, aes+cbc+hmac+sha2, zeroize
+│               │   └── src/
+│               │       ├── lib.rs          # C2 loop, crypto, file transfers, HTTP client
+│               │       └── dispatch.rs     # Cross-platform command dispatch
+│               ├── linux/                  # Linux-specific: /proc parsing, hostname fallback
+│               ├── windows/                # Windows-specific: inject, integrity, tasklist
+│               └── osx/                    # macOS-specific: shell fallbacks for ps/netstat
+└── ...
 ```
 
 ---
@@ -296,10 +315,12 @@ linky-mythic/
 ## Development validation commands
 
 ```bash
-# Go (from project root)
+# Go (from Payload_Type/linky/)
+cd Payload_Type/linky
 go build ./... && go vet ./...
 
-# Rust workspace (from agent_code/)
+# Rust workspace (from Payload_Type/linky/agent_code/)
+cd Payload_Type/linky/agent_code
 CALLBACK=x \
   IMPLANT_SECRET=$(python3 -c "import base64,os;print(base64.b64encode(os.urandom(32)).decode())") \
   PAYLOAD_UUID=x CALLBACK_URI=/ \
@@ -339,7 +360,6 @@ See [TODO.md](TODO.md) for the detailed phase-by-phase plan.
 - Configurable User-Agent via build parameter
 - `ipinfo` command (network interface info)
 - Conditional command compilation via Cargo features (operator picks commands at build time)
-- CI pipeline (replace stub test scripts with GitHub Actions)
 
 ### Medium-term
 - Sleep obfuscation research (Windows — Ekko-style)
