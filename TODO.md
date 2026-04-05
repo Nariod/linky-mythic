@@ -18,15 +18,17 @@ handles TLS termination. No WebSocket, no SMB, no TCP — HTTP profile only.
 These files are already correct.
 
 **Reference files** (read before writing any code):
-- `agent_code/links/common/src/lib.rs` — Mythic protocol implementation
-- `mythic/agent_functions/builder.go` — builder
-- `mythic/agent_functions/shell.go` — canonical command definition example
+- `Payload_Type/linky/agent_code/links/common/src/lib.rs` — Mythic protocol implementation
+- `Payload_Type/linky/mythic/agent_functions/builder.go` — builder
+- `Payload_Type/linky/mythic/agent_functions/shell.go` — canonical command definition example
 
-**Écarts par rapport au plan initial** (déjà implémentés ainsi, ne pas changer) :
-- Structure à la racine, pas sous `Payload_Type/linky/` — tous les chemins Go sont relatifs à la racine
+**Choix d'implémentation** (déjà implémentés ainsi, ne pas changer) :
+- Structure standard Mythic : tout le code est sous `Payload_Type/linky/` (requis par `mythic-cli install`)
 - Constants CALLBACK/IMPLANT_SECRET/PAYLOAD_UUID dans `build.rs` → `env!()` dans `main.rs`
 - `ureq 3` (remplace reqwest), `rand 0.10` (pas 0.8.5)
 - `obfstr` utilisé pour les strings Mythic sensibles (checkin, get_tasking, etc.)
+- Go binary installé dans `/usr/local/bin/` (pas `/Mythic/`) pour survivre au bind mount Mythic
+- `CGO_ENABLED=0` pour un binaire Go statique compatible avec toute image runtime
 
 ---
 
@@ -65,10 +67,13 @@ It is provided to the builder as a base64-encoded string via `c2.GetCryptoArg("A
 ### Phase 10 — Commandes manquantes (cp, mv, rm, mkdir, execute) ✅
 ### Phase 11 — Réduction taille binaires (reqwest→ureq, 4.5→1.9 MB) ✅
 ### Phase 12 — OPSEC hardening (obfstr + RUSTFLAGS) ✅
+### Phase 13.5 — Indirect Syscalls (Windows) ✅
+### Phase 16 — Restructuration repo + Dockerfile fixes ✅
 
 `go build ./...` + `cargo test --workspace` : 9/9 tests passent.
-Build payload Linux via Mythic API : ✅ (54 MB debug build).
-Prêt pour Phase 8 (hardening).
+Build payload Linux via Mythic API : ✅ (~1.9 MB release).
+Build payload Windows via Mythic API : ✅ (~1.6 MB release).
+Prêt pour la production.
 
 ---
 
@@ -1165,6 +1170,44 @@ aarch64-apple-darwin
 - [ ] Test d'injection avec indirect syscalls sur Windows réel
 - [ ] Vérification de la résolution SSN au runtime (PEB walking)
 - [ ] Test avec EDR actif (Windows Defender, CrowdStrike, etc.)
+
+---
+
+## Phase 16 — Restructuration repo + Dockerfile fixes ✅
+
+Problèmes découverts et corrigés lors de la tentative d'installation Mythic :
+
+### 16.1 — Structure standard Mythic `Payload_Type/` ✅
+- [x] `mythic-cli install folder` attendait `Payload_Type/<name>/` — le code était à la racine
+- [x] Migration de `Dockerfile`, `main.go`, `go.mod`, `go.sum`, `mythic/`, `agent_code/` vers `Payload_Type/linky/`
+- [x] `config.json` et `agent_capabilities.json` restent à la racine
+- [x] Mise à jour des chemins dans `.github/workflows/test.yml` et `run_tests.sh`
+- [x] Mise à jour du `.gitignore` pour les nouveaux chemins
+
+### 16.2 — Binaire Go statique ✅
+- [x] `CGO_ENABLED=0` dans le Dockerfile pour produire un binaire statique
+- [x] Copie de `go.sum` en plus de `go.mod` pour la vérification des modules
+- [x] Sans CGO_ENABLED=0, le binaire dynamique échouait avec « no such file or directory »
+      (mismatch glibc entre `golang:1.25` et `rust:latest`)
+
+### 16.3 — Survie au bind mount Mythic ✅
+- [x] Mythic monte `InstalledServices/linky/` sur `/Mythic/` au runtime
+- [x] Le binaire Go placé dans `/Mythic/` était masqué par le bind mount
+- [x] Solution : installer le binaire dans `/usr/local/bin/linky_payload_type`
+- [x] CMD changé de `["./linky_payload_type"]` → `["/usr/local/bin/linky_payload_type"]`
+
+### 16.4 — SELinux (Fedora/RHEL) ✅
+- [x] SELinux Enforcing bloque l'accès Docker aux fichiers montés par bind mount
+- [x] Solution : `sudo chcon -Rt svirt_sandbox_file_t <InstalledServices/linky/>`
+- [x] Documenté dans le README
+
+### Validation
+- [x] `go build ./...` + `go vet ./...` : OK
+- [x] `cargo test --workspace` : 9/9 tests passent
+- [x] Conteneur linky : running + connecté à RabbitMQ
+- [x] 21 commandes enregistrées dans Mythic
+- [x] Build payload Linux via API : ✅ (1,942,304 bytes — ~1.9 MB)
+- [x] Build payload Windows via API : ✅ (1,624,064 bytes — ~1.6 MB)
 
 ---
 
