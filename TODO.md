@@ -1255,18 +1255,20 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-unknown-linux-musl,x86_64-pc-windows-gnu
-      - run: go build ./...
-      - run: go vet ./...
       - run: |
-          cd agent_code
+          cd Payload_Type/linky
+          go build ./...
+          go vet ./...
+      - run: |
+          cd Payload_Type/linky/agent_code
           CALLBACK=x IMPLANT_SECRET=$(python3 -c "...") PAYLOAD_UUID=x CALLBACK_URI=/ \
             cargo test --workspace
       - run: |
-          cd agent_code
+          cd Payload_Type/linky/agent_code
           cargo build --release --target x86_64-unknown-linux-musl
           cargo build --release --target x86_64-pc-windows-gnu
       - run: |
-          ls -la agent_code/target/*/release/link-*
+          ls -la Payload_Type/linky/agent_code/target/*/release/link-*
 ```
 
 ### 15.2 — Tests d'intégration avec Mythic
@@ -1279,46 +1281,53 @@ Documentation Mythic-compatible pour l'agent (installation, usage, commandes).
 
 ---
 
-## File checklist — état actuel (phases 0-8 complètes)
+## File checklist — état actuel
 
 ```
-agent_code/
-└── links/
-    ├── common/
-    │   ├── Cargo.toml                 ✅ aes+cbc+hmac+sha2+zeroize (AES-256-CBC+HMAC-SHA256)
-    │   └── src/
-    │       ├── lib.rs                 ✅ Mythic AES256_HMAC crypto, chunked file transfers, zeroize
-    │       └── dispatch.rs            ✅ dispatch_common (download/upload gérés dans run_c2_loop)
-    ├── linux/
-    │   ├── build.rs                   ✅ CALLBACK_URI
-    │   └── src/
-    │       ├── main.rs                ✅ const CALLBACK_URI
-    │       └── stdlib.rs              ✅ extract_param pour shell dispatch
-    ├── windows/
-    │   ├── build.rs                   ✅ CALLBACK_URI
-    │   └── src/
-    │       ├── main.rs                ✅ const CALLBACK_URI
-    │       └── stdlib.rs              ✅ extract_param pour shell/cmd/powershell/inject
-    └── osx/
-        ├── build.rs                   ✅ CALLBACK_URI
-        └── src/
-            ├── main.rs                ✅ const CALLBACK_URI
-            └── stdlib.rs              ✅ extract_param pour shell dispatch
-
-(root)/
+Payload_Type/linky/
+├── Dockerfile                         ✅ CGO_ENABLED=0, binary in /usr/local/bin/
 ├── main.go                            ✅ MythicContainer import
 ├── go.mod                             ✅ MythicContainer v1.6.4, Go 1.25
-├── Dockerfile                         ✅ golang:1.25
-├── .github/workflows/test.yml         ✅ go-version: 1.25
-└── mythic/
-    ├── payload_type.go                ✅ []string OS, MythicEncryptsData: true
-    └── agent_functions/
-        ├── builder.go                 ✅ AESPSK via GetCryptoArg, AES-CBC+HMAC encryptCallback
-        ├── shell.go                   ✅ ParameterGroupInformation
-        ├── ls.go, cd.go, pwd.go ...   ✅ MythicContainer imports + OS constants
-        ├── sleep.go                   ✅ ParameterGroupInformation
-        ├── inject.go                  ✅ ParameterGroupInformation
-        ├── exit.go                    ✅
-        ├── download.go                ✅ path parameter
-        └── upload.go                  ✅ file (FILE type) + remote_path parameters
+├── go.sum                             ✅ copié dans Dockerfile
+├── mythic/
+│   ├── payload_type.go                ✅ []string OS, MythicEncryptsData: true
+│   └── agent_functions/
+│       ├── builder.go                 ✅ AESPSK via GetCryptoArg, AES-CBC+HMAC encryptCallback
+│       ├── shell.go                   ✅ ParameterGroupInformation
+│       ├── ls.go, cd.go, pwd.go ...   ✅ MythicContainer imports + OS constants
+│       ├── sleep.go                   ✅ ParameterGroupInformation
+│       ├── inject.go                  ✅ ParameterGroupInformation
+│       ├── exit.go                    ✅
+│       ├── download.go                ✅ path parameter
+│       └── upload.go                  ✅ file (FILE type) + remote_path parameters
+└── agent_code/
+    └── links/
+        ├── common/
+        │   ├── Cargo.toml                 ✅ aes+cbc+hmac+sha2+zeroize (AES-256-CBC+HMAC-SHA256)
+        │   └── src/
+        │       ├── lib.rs                 ✅ Mythic AES256_HMAC crypto, chunked file transfers, zeroize
+        │       └── dispatch.rs            ✅ dispatch_common (download/upload gérés dans run_c2_loop)
+        ├── linux/
+        │   ├── build.rs                   ✅ CALLBACK_URI
+        │   └── src/
+        │       ├── main.rs                ✅ const CALLBACK_URI
+        │       └── stdlib.rs              ✅ extract_param pour shell dispatch
+        ├── windows/
+        │   ├── build.rs                   ✅ CALLBACK_URI
+        │   └── src/
+        │       ├── main.rs                ✅ const CALLBACK_URI
+        │       ├── stdlib.rs              ✅ extract_param pour shell/cmd/powershell/inject
+        │       └── nt_inject.rs           ✅ indirect syscalls (NtAPI via syscalls-rs)
+        └── osx/
+            ├── build.rs                   ✅ CALLBACK_URI
+            └── src/
+                ├── main.rs                ✅ const CALLBACK_URI
+                └── stdlib.rs              ✅ extract_param pour shell dispatch
+
+(root)/
+├── config.json                        ✅ payload_types: ["linky"]
+├── agent_capabilities.json            ✅
+├── .github/workflows/test.yml         ✅ working-directory: Payload_Type/linky/
+├── .gitignore                         ✅ Payload_Type/linky/agent_code/target/
+└── run_tests.sh                       ✅ cd Payload_Type/linky/agent_code
 ```
