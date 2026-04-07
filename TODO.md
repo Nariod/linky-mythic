@@ -69,11 +69,108 @@ It is provided to the builder as a base64-encoded string via `c2.GetCryptoArg("A
 ### Phase 12 — OPSEC hardening (obfstr + RUSTFLAGS) ✅
 ### Phase 13.5 — Indirect Syscalls (Windows) ✅
 ### Phase 16 — Restructuration repo + Dockerfile fixes ✅
+### Phase 17 — Full audit & live testing (April 2026) ✅
 
 `go build ./...` + `cargo test --workspace` : 9/9 tests passent.
 Build payload Linux via Mythic API : ✅ (~1.9 MB release).
 Build payload Windows via Mythic API : ✅ (~1.6 MB release).
-Prêt pour la production.
+Build payload Windows + indirect syscalls : ✅.
+Build payload Linux shellcode : ✅.
+Build payload macOS : ❌ attendu (osxcross non installé).
+Live test Linux implant : ✅ 16/16 commandes validées.
+
+---
+
+### Phase 17 — Full audit & live testing ✅
+
+Comprehensive audit performed April 2026 against Mythic v3.4.0.52.
+
+#### 17.1 — Payload generation results
+
+| Payload | OS | Options | Result |
+|---------|------|---------|--------|
+| Linux standard | Linux | release | ✅ ~1.9 MB |
+| Windows standard | Windows | release | ✅ ~2 MB |
+| Windows + indirect syscalls | Windows | indirect_syscalls=true | ✅ |
+| Linux shellcode | Linux | shellcode=true | ✅ |
+| macOS standard | macOS | release | ❌ expected (no osxcross/x86_64-apple-darwin target) |
+
+#### 17.2 — Live command testing (Linux implant)
+
+All 16 testable commands validated against Mythic with real callback:
+
+| Command | Status | Output excerpt |
+|---------|--------|----------------|
+| whoami | ✅ | `fedora@` |
+| pwd | ✅ | `/home/fedora/Documents/linky-mythic` |
+| pid | ✅ | `58542` |
+| info | ✅ | `OS Version: Fedora Linux 43...` |
+| ls | ✅ | sorted directory listing |
+| cd | ✅ | `[+] /tmp` |
+| ps | ✅ | process table with PID/PPID/USER/COMMAND |
+| netstat | ✅ | network connections table |
+| shell | ✅ | `hello_from_linky` |
+| execute | ✅ | `Linux fedora 6.19.10-200.fc43.x86_64...` |
+| sleep | ✅ | `[+] sleep: 10s, jitter: 23%` |
+| mkdir | ✅ | `[+] created /tmp/linky_test_dir_3` |
+| cp | ✅ | `[+] copied /etc/hostname -> ...` |
+| mv | ✅ | `[+] moved ... -> ...` |
+| rm | ✅ | `[+] removed ...` |
+| killdate | ✅ | `no killdate set` |
+
+Download/upload require Mythic UI interaction — verified in prior Phase 6.
+Exit command not tested (terminates the agent).
+
+#### 17.3 — Go code audit findings
+
+| ID | Severity | File | Issue |
+|----|----------|------|-------|
+| GO-01 | 🔴 CRITICAL | builder.go:183-191 | `encryptCallback` returns plaintext on crypto failure — should return error |
+| GO-02 | 🔴 CRITICAL | Dockerfile:34-35 | Hardcoded RabbitMQ credentials (mythic_user/mythic_password) — use env vars |
+| GO-03 | 🟡 MEDIUM | builder.go:30-33 | Build parameter errors silently swallowed (bad param names ignored) |
+| GO-04 | 🟡 MEDIUM | builder.go | Only first C2 profile used, others silently ignored |
+| GO-05 | 🟡 MEDIUM | builder.go | `shellcode` parameter description says "Linux only" but code supports macOS |
+| GO-06 | 🟡 MEDIUM | builder.go | Default `callback_uri` of `/` causes 301 redirect via nginx |
+| GO-07 | 🟢 LOW | Dockerfile | Uses `rust:latest` — non-reproducible builds |
+| GO-08 | 🟢 LOW | builder.go | Placeholder author string in payload definition |
+| GO-09 | 🟢 LOW | builder.go | `cmd` and `powershell` commands duplicated between Go and Rust |
+
+#### 17.4 — Rust code audit findings
+
+| ID | Severity | File | Issue |
+|----|----------|------|-------|
+| RS-01 | 🟡 MEDIUM | lib.rs:237,277 | Non-constant-time HMAC comparison (`==` instead of `hmac::Mac::verify_slice()`) |
+| RS-02 | 🟡 MEDIUM | lib.rs:631 | `handle_sleep_command` can panic on whitespace-only input (index out of bounds) |
+| RS-03 | 🟢 LOW | lib.rs:137-139 | TLS verification disabled — intentional but should document security implications |
+| RS-04 | 🟢 LOW | lib.rs:164,183 | `.expect()` calls in crypto path could panic on corrupt data |
+| RS-05 | 🟢 LOW | windows/stdlib.rs:319-325 | `WriteProcessMemory` return value ignored in injection code |
+| RS-06 | 🟢 LOW | dispatch.rs:12 | Minor cargo fmt inconsistency |
+
+#### 17.5 — Dependency audit
+
+**Go (go.mod):**
+- `MythicContainer v1.6.4` — latest ✅
+- Go `1.25.1` — latest ✅
+
+**Rust (Cargo.toml):**
+- `ureq 3.x` — latest ✅
+- `rand 0.10` — latest ✅
+- `aes 0.8`, `cbc 0.1`, `hmac 0.12`, `sha2 0.10` — current stable ✅
+  (`hmac 0.13` / `sha2 0.11` available but contain breaking API changes)
+- `obfstr 0.4` — latest ✅
+- `serde 1.x`, `serde_json 1.x` — latest ✅
+- `zeroize 1.x` — latest ✅
+
+#### 17.6 — Operational notes discovered
+
+1. **Agent traffic must go to port 443** (HTTP C2 profile), NOT port 7443 (nginx).
+   Nginx on 7443 is for the Mythic UI only. The HTTP C2 container runs on port 443.
+2. **callback_uri must match the C2 profile's `post_uri`** (e.g. `/data`).
+   The default `/` causes a 301 redirect from nginx.
+3. **SELinux**: On Fedora/RHEL, run `chcon -Rt svirt_sandbox_file_t` on InstalledServices/
+   after `mythic-cli install`, or cargo builds will fail with permission denied.
+4. **RabbitMQ connection resets**: HTTP C2 and linky containers periodically lose
+   RabbitMQ connections. Restarting the containers resolves this.
 
 ---
 
