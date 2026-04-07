@@ -133,11 +133,11 @@ The implant preserves the scheme from `callback_host`. HTTPS is strongly recomme
 
 | ID | Severity | Description |
 |----|----------|-------------|
-| GO-01 | 🔴 Critical | `encryptCallback` in builder.go returns plaintext on crypto failure — should return error |
-| GO-02 | 🔴 Critical | Dockerfile hardcodes RabbitMQ credentials — should use environment variables |
-| RS-01 | 🟡 Medium | Non-constant-time HMAC comparison in lib.rs — use `hmac::Mac::verify_slice()` |
-| RS-02 | 🟡 Medium | `handle_sleep_command` can panic on whitespace-only input |
-| GO-06 | 🟡 Medium | Default `callback_uri` of `/` conflicts with nginx rewrite rules |
+| GO-01 | ✅ Fixed | ~~`encryptCallback` returns plaintext on crypto failure~~ — returns error |
+| GO-02 | ✅ Fixed | ~~Dockerfile hardcodes RabbitMQ credentials~~ — defaults removed |
+| RS-01 | ✅ Fixed | ~~Non-constant-time HMAC comparison~~ — uses `hmac::Mac::verify_slice()` |
+| RS-02 | ✅ Fixed | ~~`handle_sleep_command` can panic on whitespace-only input~~ |
+| GO-06 | ✅ Fixed | ~~Default `callback_uri` of `/` conflicts with nginx~~ — changed to `/data` |
 
 See [TODO.md](TODO.md) Phase 17 for the complete audit report.
 
@@ -364,7 +364,7 @@ cargo fmt --check
 | Release binary stripped + LTO + `panic=abort` | ✅ Done |
 | Configurable User-Agent | ⬜ Planned |
 | Indirect syscalls (Windows inject) | ✅ Optional (feature flag `indirect-syscalls`) |
-| Constant-time HMAC verification | ⬜ Fix pending (RS-01) |
+| Constant-time HMAC verification | ✅ Done (verify_slice) |
 | Sleep obfuscation (Windows) | ⬜ Research |
 | AMSI/ETW bypass (Windows) | ⬜ Planned |
 | Conditional command compilation (Cargo features) | ⬜ Planned |
@@ -376,11 +376,11 @@ cargo fmt --check
 See [TODO.md](TODO.md) for the detailed phase-by-phase plan.
 
 ### Near-term (bug fixes from audit)
-- Fix `encryptCallback` plaintext fallback (GO-01)
-- Use env vars for RabbitMQ credentials in Dockerfile (GO-02)
-- Constant-time HMAC comparison (RS-01)
-- Fix `handle_sleep_command` panic on whitespace input (RS-02)
-- Pin Rust version in Dockerfile for reproducible builds (GO-07)
+- ~~Fix `encryptCallback` plaintext fallback (GO-01)~~ ✅
+- ~~Use env vars for RabbitMQ credentials in Dockerfile (GO-02)~~ ✅
+- ~~Constant-time HMAC comparison (RS-01)~~ ✅
+- ~~Fix `handle_sleep_command` panic on whitespace input (RS-02)~~ ✅
+- ~~Pin Rust version in Dockerfile for reproducible builds (GO-07)~~ ✅
 
 ### Near-term (features)
 - Mythic `process_browser` and `file_browser` structured JSON output

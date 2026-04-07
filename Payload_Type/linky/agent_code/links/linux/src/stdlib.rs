@@ -47,23 +47,23 @@ pub fn link_loop() {
 
 // ── Command dispatch ─────────────────────────────────────────────────────────
 
-fn dispatch(command: &str, parameters: &str) -> String {
+fn dispatch(command: &str, parameters: &str) -> link_common::CommandOutput {
     if let Some(output) = link_common::dispatch::dispatch_common(command, parameters) {
         return output;
     }
     match command {
-        "whoami" => format!("{}@{}", username(), hostname()),
-        "info" => collect_system_info(),
-        "ps" => list_processes(),
-        "netstat" => list_network_connections(),
+        "whoami" => format!("{}@{}", username(), hostname()).into(),
+        "info" => collect_system_info().into(),
+        "ps" => list_processes_browser(),
+        "netstat" => list_network_connections().into(),
         "shell" => {
             let cmd = link_common::extract_param(parameters, "command");
-            shell_exec(if cmd.is_empty() { parameters } else { &cmd })
+            shell_exec(if cmd.is_empty() { parameters } else { &cmd }).into()
         }
         _ => {
             let cmd = link_common::extract_param(parameters, "command");
             let fallback = format!("{} {}", command, parameters);
-            shell_exec(if cmd.is_empty() { &fallback } else { &cmd })
+            shell_exec(if cmd.is_empty() { &fallback } else { &cmd }).into()
         }
     }
 }
@@ -182,67 +182,85 @@ fn get_interface_ip(interface: &str) -> Option<String> {
     None
 }
 
-fn list_processes() -> String {
+fn list_processes_browser() -> link_common::CommandOutput {
     use std::fs;
     use std::path::Path;
 
-    let mut processes = Vec::new();
-    processes.push("PID\tPPID\tUSER\t\tCOMMAND".to_string());
-    processes.push("-".repeat(50));
+    let mut text_lines = Vec::new();
+    let mut entries = Vec::new();
+    text_lines.push("PID\tPPID\tUSER\t\tCOMMAND".to_string());
+    text_lines.push("-".repeat(50));
 
-    if let Ok(entries) = fs::read_dir("/proc") {
-        for entry in entries.flatten() {
+    if let Ok(dir) = fs::read_dir("/proc") {
+        for entry in dir.flatten() {
             if let Ok(pid_str) = entry.file_name().into_string() {
-                if let Ok(_pid) = pid_str.parse::<u32>() {
-                    let proc_path = Path::new("/proc").join(&pid_str);
-                    let status_path = proc_path.join("status");
-                    if let Ok(status) = fs::read_to_string(status_path) {
-                        let mut process_pid = 0u32;
-                        let mut process_ppid = 0u32;
-                        let mut process_uid = 0u32;
-                        let mut process_name = "unknown".to_string();
+                if pid_str.parse::<u32>().is_err() {
+                    continue;
+                }
+                let proc_path = Path::new("/proc").join(&pid_str);
+                let status = match fs::read_to_string(proc_path.join("status")) {
+                    Ok(s) => s,
+                    Err(_) => continue,
+                };
 
-                        for line in status.lines() {
-                            if line.starts_with("Name:") {
-                                if let Some(name) = line.split(':').nth(1) {
-                                    process_name = name.trim().to_string();
-                                }
-                            } else if line.starts_with("Pid:") {
-                                if let Ok(p) = line.split(':').nth(1).unwrap_or("").trim().parse() {
-                                    process_pid = p;
-                                }
-                            } else if line.starts_with("PPid:") {
-                                if let Ok(pp) = line.split(':').nth(1).unwrap_or("").trim().parse()
-                                {
-                                    process_ppid = pp;
-                                }
-                            } else if line.starts_with("Uid:") {
-                                if let Some(u) = line
-                                    .split(':')
-                                    .nth(1)
-                                    .and_then(|s| s.split_whitespace().next())
-                                    .and_then(|s| s.parse().ok())
-                                {
-                                    process_uid = u;
-                                }
-                            }
-                        }
+                let mut pid = 0u32;
+                let mut ppid = 0u32;
+                let mut uid = 0u32;
+                let mut name = "unknown".to_string();
 
-                        let uname = get_username_from_uid(process_uid);
-                        processes.push(format!(
-                            "{}\t{}\t{}\t{}",
-                            process_pid, process_ppid, uname, process_name
-                        ));
+                for line in status.lines() {
+                    if let Some(v) = line.strip_prefix("Name:") {
+                        name = v.trim().to_string();
+                    } else if let Some(v) = line.strip_prefix("Pid:") {
+                        pid = v.trim().parse().unwrap_or(0);
+                    } else if let Some(v) = line.strip_prefix("PPid:") {
+                        ppid = v.trim().parse().unwrap_or(0);
+                    } else if let Some(v) = line.strip_prefix("Uid:") {
+                        uid = v
+                            .split_whitespace()
+                            .next()
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0);
                     }
                 }
+
+                let cmdline = fs::read_to_string(proc_path.join("cmdline"))
+                    .unwrap_or_default()
+                    .replace('\0', " ")
+                    .trim()
+                    .to_string();
+
+                let uname = get_username_from_uid(uid);
+                text_lines.push(format!("{}\t{}\t{}\t{}", pid, ppid, uname, name));
+                entries.push(link_common::ProcessEntry {
+                    process_id: pid,
+                    name: name.clone(),
+                    parent_process_id: ppid,
+                    user: Some(uname),
+                    command_line: if cmdline.is_empty() {
+                        None
+                    } else {
+                        Some(cmdline)
+                    },
+                    bin_path: fs::read_link(proc_path.join("exe"))
+                        .ok()
+                        .map(|p| p.display().to_string()),
+                    architecture: None,
+                });
             }
         }
     }
 
-    if processes.len() <= 2 {
-        "No processes found or insufficient permissions".to_string()
-    } else {
-        processes.join("\n")
+    if entries.is_empty() {
+        return "No processes found or insufficient permissions"
+            .to_string()
+            .into();
+    }
+
+    link_common::CommandOutput {
+        text: text_lines.join("\n"),
+        processes: Some(entries),
+        file_browser: None,
     }
 }
 

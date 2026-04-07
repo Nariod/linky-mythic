@@ -18,7 +18,7 @@ func payloadDefinition() agentstructs.PayloadType {
 	return agentstructs.PayloadType{
 		Name:                   "linky",
 		FileExtension:          "bin",
-		Author:                 "@your-handle",
+		Author:                 "@Nariod",
 		SupportedOS:            []string{agentstructs.SUPPORTED_OS_MACOS, agentstructs.SUPPORTED_OS_LINUX, agentstructs.SUPPORTED_OS_WINDOWS},
 		Wrapper:                false,
 		CanBeWrappedByTheFollowingPayloadTypes: []string{},
@@ -37,7 +37,7 @@ func payloadDefinition() agentstructs.PayloadType {
 			},
 			{
 				Name:          "shellcode",
-				Description:   "Export as shellcode (.bin via objcopy — Linux only)",
+				Description:   "Export as shellcode (.bin via objcopy — Linux and macOS)",
 				Required:      false,
 				ParameterType: agentstructs.BUILD_PARAMETER_TYPE_BOOLEAN,
 				DefaultValue:  false,
@@ -54,7 +54,7 @@ func payloadDefinition() agentstructs.PayloadType {
 				Description:   "C2 callback URI path (must match HTTP profile configuration)",
 				Required:      false,
 				ParameterType: agentstructs.BUILD_PARAMETER_TYPE_STRING,
-				DefaultValue:  "/",
+				DefaultValue:  "/data",
 			},
 			{
 				Name:          "indirect_syscalls",

