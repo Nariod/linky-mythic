@@ -8,7 +8,7 @@ func registerShell() {
 		Description:         "Execute a shell command via /bin/sh (Linux/macOS) or cmd.exe (Windows)",
 		HelpString:          "shell <command>",
 		Version:             1,
-		Author:              "@your-handle",
+		Author:              "@Nariod",
 		MitreAttackMappings: []string{"T1059"},
 		SupportedUIFeatures: []string{"callback_table:shell"},
 		CommandAttributes: agentstructs.CommandAttribute{

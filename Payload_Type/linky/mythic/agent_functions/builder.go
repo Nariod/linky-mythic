@@ -27,7 +27,11 @@ func Build(input agentstructs.PayloadBuildMessage) agentstructs.PayloadBuildResp
 	}
 
 	// Extract build parameters
-	targetOS, _ := input.BuildParameters.GetStringArg("target_os")
+	targetOS, err := input.BuildParameters.GetStringArg("target_os")
+	if err != nil {
+		resp.BuildStdErr = fmt.Sprintf("missing required parameter target_os: %v", err)
+		return resp
+	}
 	shellcode, _ := input.BuildParameters.GetBooleanArg("shellcode")
 	debug, _ := input.BuildParameters.GetBooleanArg("debug")
 	indirectSyscalls, _ := input.BuildParameters.GetBooleanArg("indirect_syscalls")
@@ -37,7 +41,14 @@ func Build(input agentstructs.PayloadBuildMessage) agentstructs.PayloadBuildResp
 	// Get the AESPSK encryption key from the C2 profile.
 	// Mythic generates a random 32-byte key when the user selects "aes256_hmac".
 	var aesKeyB64 string
-	if len(input.C2Profiles) > 0 {
+	if len(input.C2Profiles) == 0 {
+		resp.BuildStdErr = "linky requires the HTTP C2 profile with AESPSK set to aes256_hmac"
+		return resp
+	}
+	if len(input.C2Profiles) > 1 {
+		resp.BuildStdOut = fmt.Sprintf("Warning: %d C2 profiles found, using only the first one\n", len(input.C2Profiles))
+	}
+	{
 		c2 := input.C2Profiles[0]
 		crypto, err := c2.GetCryptoArg("AESPSK")
 		if err == nil && crypto.EncKey != "" {
@@ -56,9 +67,10 @@ func Build(input agentstructs.PayloadBuildMessage) agentstructs.PayloadBuildResp
 	}
 
 	// The callback host/port come from the C2 profile parameters.
-	// Preserve the full scheme (http:// or https://) so the implant can use either.
+	// The scheme (http:// or https://) is preserved from callback_host.
+	// Note: the implant uses whatever scheme is provided. HTTPS is strongly recommended.
 	var callbackHost string
-	if len(input.C2Profiles) > 0 {
+	{
 		c2 := input.C2Profiles[0]
 		host, _ := c2.GetArg("callback_host")
 		port, _ := c2.GetArg("callback_port")

