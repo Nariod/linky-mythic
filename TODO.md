@@ -125,26 +125,26 @@ Exit command not tested (terminates the agent).
 
 | ID | Severity | File | Issue |
 |----|----------|------|-------|
-| GO-01 | 🔴 CRITICAL | builder.go:183-191 | `encryptCallback` returns plaintext on crypto failure — should return error |
-| GO-02 | 🔴 CRITICAL | Dockerfile:34-35 | Hardcoded RabbitMQ credentials (mythic_user/mythic_password) — use env vars |
+| GO-01 | ✅ ~~CRITICAL~~ | builder.go | ~~`encryptCallback` returns plaintext on crypto failure~~ — returns error |
+| GO-02 | ✅ ~~CRITICAL~~ | Dockerfile | ~~Hardcoded RabbitMQ credentials~~ — defaults removed |
 | GO-03 | 🟡 MEDIUM | builder.go:30-33 | Build parameter errors silently swallowed (bad param names ignored) |
 | GO-04 | 🟡 MEDIUM | builder.go | Only first C2 profile used, others silently ignored |
-| GO-05 | 🟡 MEDIUM | builder.go | `shellcode` parameter description says "Linux only" but code supports macOS |
-| GO-06 | 🟡 MEDIUM | builder.go | Default `callback_uri` of `/` causes 301 redirect via nginx |
-| GO-07 | 🟢 LOW | Dockerfile | Uses `rust:latest` — non-reproducible builds |
-| GO-08 | 🟢 LOW | builder.go | Placeholder author string in payload definition |
+| GO-05 | ✅ ~~MEDIUM~~ | payload_type.go | ~~`shellcode` description says "Linux only"~~ — updated |
+| GO-06 | ✅ ~~MEDIUM~~ | payload_type.go + builder.go | ~~Default `callback_uri` of `/` causes 301~~ — changed to `/data` |
+| GO-07 | ✅ ~~LOW~~ | Dockerfile | ~~Uses `rust:latest`~~ — pinned to `rust:1.86` |
+| GO-08 | ✅ ~~LOW~~ | payload_type.go | ~~Placeholder author string~~ — set to `@Nariod` |
 | GO-09 | 🟢 LOW | builder.go | `cmd` and `powershell` commands duplicated between Go and Rust |
 
 #### 17.4 — Rust code audit findings
 
 | ID | Severity | File | Issue |
 |----|----------|------|-------|
-| RS-01 | 🟡 MEDIUM | lib.rs:237,277 | Non-constant-time HMAC comparison (`==` instead of `hmac::Mac::verify_slice()`) |
-| RS-02 | 🟡 MEDIUM | lib.rs:631 | `handle_sleep_command` can panic on whitespace-only input (index out of bounds) |
+| RS-01 | ✅ ~~MEDIUM~~ | lib.rs | ~~Non-constant-time HMAC comparison~~ — uses `verify_slice()` |
+| RS-02 | ✅ ~~MEDIUM~~ | lib.rs | ~~`handle_sleep_command` panics on whitespace-only input~~ — fixed |
 | RS-03 | 🟢 LOW | lib.rs:137-139 | TLS verification disabled — intentional but should document security implications |
-| RS-04 | 🟢 LOW | lib.rs:164,183 | `.expect()` calls in crypto path could panic on corrupt data |
-| RS-05 | 🟢 LOW | windows/stdlib.rs:319-325 | `WriteProcessMemory` return value ignored in injection code |
-| RS-06 | 🟢 LOW | dispatch.rs:12 | Minor cargo fmt inconsistency |
+| RS-04 | 🟢 LOW | lib.rs:164,183 | `.expect()` calls in crypto path — buffer always correctly sized, safe |
+| RS-05 | ✅ ~~LOW~~ | windows/stdlib.rs | ~~`WriteProcessMemory` return value ignored~~ — checked |
+| RS-06 | ✅ ~~LOW~~ | dispatch.rs | ~~cargo fmt inconsistency~~ — fixed |
 
 #### 17.5 — Dependency audit
 

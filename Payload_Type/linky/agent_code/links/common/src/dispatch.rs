@@ -9,7 +9,11 @@ pub fn dispatch_common(command: &str, parameters: &str) -> Option<String> {
     let output = match command {
         "cd" => {
             let path = crate::extract_param(parameters, "path");
-            let target = if path.is_empty() { "~".to_string() } else { path };
+            let target = if path.is_empty() {
+                "~".to_string()
+            } else {
+                path
+            };
             let target = crate::expand_tilde(&target);
             match std::env::set_current_dir(&target) {
                 Ok(_) => std::env::current_dir()

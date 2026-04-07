@@ -5,7 +5,7 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 go build -o linky_payload_type .
 
-FROM rust:latest
+FROM rust:1.86
 RUN apt-get update && apt-get install -y \
     musl-tools \
     mingw-w64 \
@@ -29,8 +29,8 @@ ENV MYTHIC_SERVER_HOST="127.0.0.1"
 ENV MYTHIC_SERVER_PORT="7444"
 ENV MYTHIC_RABBITMQ_HOST="127.0.0.1"
 ENV MYTHIC_RABBITMQ_PORT="5672"
-ENV MYTHIC_RABBITMQ_USER="mythic_user"
-ENV MYTHIC_RABBITMQ_PASSWORD="mythic_password"
+ENV MYTHIC_RABBITMQ_USER=""
+ENV MYTHIC_RABBITMQ_PASSWORD=""
 ENV MYTHIC_RABBITMQ_VHOST="mythic_vhost"
 ENV MYTHIC_CONTAINER_NAME="linky"
 ENV DEBUG_LEVEL="warning"

