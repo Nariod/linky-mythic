@@ -33,15 +33,18 @@ sudo ./mythic-cli install github https://github.com/Nariod/linky-mythic
 
 ## Current status
 
-**Beta — live-tested.** The codebase has been **validated against a live Mythic instance** with real implant callbacks (July 2026):
+**Beta — live-tested.** The codebase has been **validated against a live Mythic v3.4.0.52 instance** with real implant callbacks (April 2026):
 
 - ✅ Payload type registers and syncs with Mythic via RabbitMQ
 - ✅ HTTP C2 profile integration (HTTPS recommended, HTTP supported)
 - ✅ Linux payload builds successfully (release: **~1.9 MB** with ureq)
 - ✅ Windows payload cross-compiles successfully (mingw-w64)
+- ✅ Windows + indirect syscalls build: ✅
+- ✅ Linux shellcode export: ✅
+- ❌ macOS build: expected failure (osxcross not installed)
 - ✅ Mythic-compatible encryption (AES-256-CBC + HMAC-SHA256)
 - ✅ Chunked file transfer (download + upload) via Mythic file-store API
-- ✅ **Live callback verified** — Linux implant checks in and executes commands
+- ✅ **Live callback verified** — Linux implant checks in and executes **16/16 commands**
 - ✅ OPSEC: string obfuscation (`obfstr`), path remapping, debuginfo stripped
 - ✅ **Indirect syscalls** (Windows): optional `inject` via [syscalls-rs](https://github.com/Nariod/syscalls-rs) — NtAPI calls bypass user-mode hooks
 - ✅ All unit tests pass (Go build + 9 Rust tests)
@@ -54,28 +57,28 @@ sudo ./mythic-cli install github https://github.com/Nariod/linky-mythic
 | Windows x86_64 | ~2 MB | mingw-w64, stripped |
 | macOS x86_64 | N/A | requires osxcross (not in Dockerfile yet) |
 
-### Live command test results (Linux)
+### Live command test results (Linux — April 2026, Mythic v3.4.0.52)
 
 | Command | Status | Notes |
 |---------|--------|-------|
-| whoami | ✅ | user@hostname |
-| pwd | ✅ | current directory |
-| ls | ✅ | sorted listing |
+| whoami | ✅ | `fedora@` (user@hostname) |
+| pwd | ✅ | `/home/fedora/Documents/linky-mythic` |
+| ls | ✅ | sorted listing with directory indicators |
 | cd | ✅ | returns `[+] /new/path` |
-| pid | ✅ | process ID |
-| info | ✅ | OS, arch, user, hostname, IP |
-| ps | ✅ | process list |
-| netstat | ✅ | network connections |
-| shell | ✅ | shell command execution via `/bin/sh -c` |
-| download | ✅ | Mythic chunked file transfer |
+| pid | ✅ | `58542` (actual PID) |
+| info | ✅ | OS Version, arch, user, hostname, IP addresses |
+| ps | ✅ | PID/PPID/USER/COMMAND table |
+| netstat | ✅ | Proto/Local/Remote/State/PID table |
+| shell | ✅ | `echo hello_from_linky` → `hello_from_linky` |
+| download | ✅ | Mythic chunked file transfer (verified in Phase 6) |
 | upload | ✅ | Mythic pull-down protocol (requires UI modal) |
-| sleep | ✅ | interval + jitter percentage |
-| killdate | ✅ | agent expiration (epoch timestamp) |
+| sleep | ✅ | `[+] sleep: 10s, jitter: 23%` |
+| killdate | ✅ | `no killdate set` / set/clear working |
 | cp | ✅ | file/directory copy (recursive) |
 | mv | ✅ | move/rename |
 | rm | ✅ | file/directory removal (recursive) |
 | mkdir | ✅ | recursive directory creation |
-| execute | ✅ | direct binary execution (no shell) |
+| execute | ✅ | `/usr/bin/uname -a` → full kernel info |
 | exit | ✅ | clean agent termination |
 
 ---
@@ -121,6 +124,22 @@ Recommended HTTP profile values:
 - `callback_jitter`: `23`
 
 The implant preserves the scheme from `callback_host`. HTTPS is strongly recommended. HTTP is supported but offers no transport encryption.
+
+> **Important**: Agent traffic goes to the **HTTP C2 profile container** (port 443 by default), NOT to the Mythic nginx frontend (port 7443). The `callback_uri` must match the C2 profile's `post_uri` (e.g., `/data`). Using `/` as callback_uri may cause a 301 redirect.
+
+---
+
+## Known issues (audit April 2026)
+
+| ID | Severity | Description |
+|----|----------|-------------|
+| GO-01 | 🔴 Critical | `encryptCallback` in builder.go returns plaintext on crypto failure — should return error |
+| GO-02 | 🔴 Critical | Dockerfile hardcodes RabbitMQ credentials — should use environment variables |
+| RS-01 | 🟡 Medium | Non-constant-time HMAC comparison in lib.rs — use `hmac::Mac::verify_slice()` |
+| RS-02 | 🟡 Medium | `handle_sleep_command` can panic on whitespace-only input |
+| GO-06 | 🟡 Medium | Default `callback_uri` of `/` conflicts with nginx rewrite rules |
+
+See [TODO.md](TODO.md) Phase 17 for the complete audit report.
 
 ---
 
@@ -345,6 +364,7 @@ cargo fmt --check
 | Release binary stripped + LTO + `panic=abort` | ✅ Done |
 | Configurable User-Agent | ⬜ Planned |
 | Indirect syscalls (Windows inject) | ✅ Optional (feature flag `indirect-syscalls`) |
+| Constant-time HMAC verification | ⬜ Fix pending (RS-01) |
 | Sleep obfuscation (Windows) | ⬜ Research |
 | AMSI/ETW bypass (Windows) | ⬜ Planned |
 | Conditional command compilation (Cargo features) | ⬜ Planned |
@@ -355,7 +375,14 @@ cargo fmt --check
 
 See [TODO.md](TODO.md) for the detailed phase-by-phase plan.
 
-### Near-term
+### Near-term (bug fixes from audit)
+- Fix `encryptCallback` plaintext fallback (GO-01)
+- Use env vars for RabbitMQ credentials in Dockerfile (GO-02)
+- Constant-time HMAC comparison (RS-01)
+- Fix `handle_sleep_command` panic on whitespace input (RS-02)
+- Pin Rust version in Dockerfile for reproducible builds (GO-07)
+
+### Near-term (features)
 - Mythic `process_browser` and `file_browser` structured JSON output
 - Configurable User-Agent via build parameter
 - `ipinfo` command (network interface info)
