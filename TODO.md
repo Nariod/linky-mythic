@@ -1336,6 +1336,88 @@ Implémentation d'un proxy SOCKS5 interne pour le pivoting réseau via Mythic.
 
 ---
 
+## Phase 17 — Windows live testing & bug fixes ✅
+
+**Date**: April 2026
+**Mythic**: v3.4.32, mythic-cli v0.3.26
+**Test environment**: Ubuntu 25.04 (Docker) + Windows VM (x86_64, user Nariod, High integrity)
+
+Two debug payloads were generated and tested:
+1. **Standard build** (no indirect syscalls)
+2. **Indirect syscalls build** (`indirect-syscalls` Cargo feature)
+
+### 17.1 — Full command matrix ✅
+
+All 21 commands tested on both build variants. **21/21 pass on both.**
+
+| Command | Type | Parameter Format | Result |
+|---------|------|-----------------|--------|
+| whoami | cross-platform | none | ✅ |
+| pwd | cross-platform | none | ✅ |
+| pid | cross-platform | none | ✅ |
+| info | cross-platform | none | ✅ |
+| integrity | Windows-only | none | ✅ |
+| ls | cross-platform | `path` (string) | ✅ |
+| cd | cross-platform | `path` (string) | ✅ |
+| shell | cross-platform | `command` (string) | ✅ |
+| ps | cross-platform | none | ✅ |
+| netstat | cross-platform | none | ✅ |
+| mkdir | cross-platform | `path` (string) | ✅ |
+| cp | cross-platform | `source dest` (plain text) | ✅ |
+| mv | cross-platform | `source dest` (plain text) | ✅ |
+| rm | cross-platform | `path` (string) | ✅ |
+| execute | cross-platform | `binary args` (plain text) | ✅ |
+| sleep | cross-platform | `seconds jitter%` (plain text) | ✅ |
+| killdate | cross-platform | `unix_timestamp` or `clear` | ✅ |
+| download | cross-platform | `path` (string) | ✅ |
+| upload | cross-platform | `{file: UUID, remote_path: path}` (JSON) | ✅ (fixed) |
+| inject | Windows-only | `{pid: N, shellcode: base64}` or `pid base64` | ✅ (fixed) |
+| exit | cross-platform | none | ✅ |
+
+### 17.2 — Bugs found and fixed
+
+#### GO-08: `upload.go` — ParseArgString doesn't handle JSON input
+
+**Symptom**: `upload` via scripting API fails: "Required arg, file, was not specified by the user"
+
+**Root cause**: `TaskFunctionParseArgString` in `upload.go` only called `args.SetArgValue("remote_path", input)`,
+treating the entire JSON string as the remote_path. The `file` parameter was never loaded.
+
+When tasks are issued via the scripting API, `TaskingLocation` is `"command_line"`, so only
+`TaskFunctionParseArgString` is called (not `ParseArgDictionary`).
+
+**Fix**: Try `json.Unmarshal` first; if the input is valid JSON, call `args.LoadArgsFromJSONString(input)`.
+Otherwise fall back to setting `remote_path` from the plain text input.
+
+#### GO-09: `inject.go` — missing TaskFunctionParseArgString entirely
+
+**Symptom**: `inject` always fails: "Required arg, pid, was not specified by the user"
+
+**Root cause**: No `TaskFunctionParseArgString` defined. When `TaskingLocation` is `"command_line"` and
+no parse function exists, the MythicContainer SDK doesn't auto-load args from JSON. The args remain
+unset, and `VerifyRequiredArgsHaveValues()` fails.
+
+**Fix**: Added `TaskFunctionParseArgString` supporting both formats:
+- JSON: `{"pid": 6992, "shellcode": "base64..."}` → `LoadArgsFromJSONString`
+- String: `6992 base64...` → parse PID as float64, set shellcode
+
+### 17.3 — Key learnings
+
+1. **MythicContainer SDK**: when `TaskingLocation == "command_line"`, ONLY `TaskFunctionParseArgString`
+   is called. No automatic JSON parsing. Every command with parameters **must** define this function
+   with JSON fallback for scripting API compatibility.
+
+2. **Parameter types**: `COMMAND_PARAMETER_TYPE_NUMBER` expects `float64`, not `int`. Mythic serializes
+   numbers as JSON floats (e.g., `5.0`). Agent-side Rust code must parse as `f64` then cast.
+
+3. **File parameters**: `COMMAND_PARAMETER_TYPE_FILE` accepts a UUID string pointing to a file
+   registered via `mythic.register_file()`. No special handling needed beyond `LoadArgsFromJSONString`.
+
+4. **Container rebuild**: Docker image caches the Go binary in `/usr/local/bin/`. Editing source files
+   under `InstalledServices/` requires `docker rmi <name>` + `mythic-cli start` to trigger rebuild.
+
+---
+
 ## Phase 15 — CI/CD et qualité ⬜
 
 ### 15.1 — CI pipeline fonctionnel
