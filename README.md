@@ -33,7 +33,7 @@ sudo ./mythic-cli install github https://github.com/Nariod/linky-mythic
 
 ## Current status
 
-**Beta — live-tested.** The codebase has been **validated against a live Mythic v3.4.0.52 instance** with real implant callbacks (April 2026):
+**Beta — live-tested.** The codebase has been **validated against a live Mythic v3.4.32 instance** with real implant callbacks (April 2026):
 
 - ✅ Payload type registers and syncs with Mythic via RabbitMQ
 - ✅ HTTP C2 profile integration (HTTPS recommended, HTTP supported)
@@ -45,6 +45,7 @@ sudo ./mythic-cli install github https://github.com/Nariod/linky-mythic
 - ✅ Mythic-compatible encryption (AES-256-CBC + HMAC-SHA256)
 - ✅ Chunked file transfer (download + upload) via Mythic file-store API
 - ✅ **Live callback verified** — Linux implant checks in and executes **16/16 commands**
+- ✅ **Windows callbacks verified** — both standard and indirect syscalls variants: **21/21 commands pass**
 - ✅ OPSEC: string obfuscation (`obfstr`), path remapping, debuginfo stripped
 - ✅ **Indirect syscalls** (Windows): optional `inject` via [syscalls-rs](https://github.com/Nariod/syscalls-rs) — NtAPI calls bypass user-mode hooks
 - ✅ All unit tests pass (Go build + 9 Rust tests)
@@ -80,6 +81,41 @@ sudo ./mythic-cli install github https://github.com/Nariod/linky-mythic
 | mkdir | ✅ | recursive directory creation |
 | execute | ✅ | `/usr/bin/uname -a` → full kernel info |
 | exit | ✅ | clean agent termination |
+
+### Live command test results (Windows — April 2026, Mythic v3.4.32)
+
+Both build variants tested: **standard** and **indirect syscalls**. All 21 commands pass identically on both.
+
+| Command | Standard | Indirect Syscalls | Notes |
+|---------|----------|-------------------|-------|
+| whoami | ✅ | ✅ | `Nariod@WIN-KKTTS06FQCO` |
+| pwd | ✅ | ✅ | `C:\Users\Nariod\Desktop\Dev` |
+| pid | ✅ | ✅ | Returns actual PID |
+| info | ✅ | ✅ | OS, arch, user, hostname, IPs |
+| integrity | ✅ | ✅ | Integrity level 3 (High) |
+| ls | ✅ | ✅ | Sorted directory listing |
+| cd | ✅ | ✅ | Changes working directory |
+| shell | ✅ | ✅ | `cmd.exe /C` execution |
+| ps | ✅ | ✅ | Process list with PID/name/user |
+| netstat | ✅ | ✅ | Network connections table |
+| mkdir | ✅ | ✅ | Creates directories recursively |
+| cp | ✅ | ✅ | File copy (plain text: `source dest`) |
+| mv | ✅ | ✅ | Move/rename (plain text: `source dest`) |
+| rm | ✅ | ✅ | File/directory removal |
+| execute | ✅ | ✅ | Direct binary execution (plain text: `path args`) |
+| sleep | ✅ | ✅ | `seconds jitter%` format |
+| killdate | ✅ | ✅ | Unix timestamp or `clear` |
+| download | ✅ | ✅ | Mythic chunked file transfer |
+| upload | ✅ | ✅ | File upload via Mythic file store |
+| inject | ✅ | ✅ | Shellcode injection (JSON or `pid base64` format) |
+| exit | ✅ | ✅ | Clean agent termination |
+
+**Bugs found and fixed during Windows testing:**
+
+| Bug | Root Cause | Fix |
+|-----|-----------|-----|
+| `upload` — "Required arg, file, was not specified" | `TaskFunctionParseArgString` didn't handle JSON input; only set `remote_path` | Added JSON detection via `LoadArgsFromJSONString` fallback |
+| `inject` — "Required arg, pid, was not specified" | No `TaskFunctionParseArgString` defined at all | Added parser supporting both JSON dict and `<pid> <base64>` string formats |
 
 ---
 
@@ -138,6 +174,8 @@ The implant preserves the scheme from `callback_host`. HTTPS is strongly recomme
 | RS-01 | ✅ Fixed | ~~Non-constant-time HMAC comparison~~ — uses `hmac::Mac::verify_slice()` |
 | RS-02 | ✅ Fixed | ~~`handle_sleep_command` can panic on whitespace-only input~~ |
 | GO-06 | ✅ Fixed | ~~Default `callback_uri` of `/` conflicts with nginx~~ — changed to `/data` |
+| GO-08 | ✅ Fixed | ~~`upload.go` `ParseArgString` didn't handle JSON~~ — added `LoadArgsFromJSONString` |
+| GO-09 | ✅ Fixed | ~~`inject.go` missing `ParseArgString`~~ — added JSON + string parser |
 
 See [TODO.md](TODO.md) Phase 17 for the complete audit report.
 
@@ -249,7 +287,6 @@ Competitive reference: [silentwarble/Hannibal](https://github.com/silentwarble/H
 - macOS cross-compilation requires osxcross (not included in Dockerfile).
 - No AMSI/ETW bypass yet (see roadmap).
 - `inject` uses Win32 APIs by default; enable `indirect-syscalls` feature for NT API path via syscalls-rs.
-- `upload` requires the Mythic web UI modal (not testable via GraphQL API alone).
 - Binary size gap with pure-C agents like Hannibal (1.9 MB vs 25-45 KB).
 - **SELinux (Fedora/RHEL)**: requires `chcon` relabeling after `mythic-cli install` (see Build notes).
 
