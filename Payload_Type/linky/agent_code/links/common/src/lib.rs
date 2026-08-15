@@ -559,11 +559,25 @@ pub fn list_dir_browser(path: &str) -> CommandOutput {
 }
 
 fn portable_hostname() -> String {
-    std::fs::read_to_string("/etc/hostname")
-        .map(|s| s.trim().to_string())
-        .or_else(|_| std::env::var("COMPUTERNAME"))
-        .or_else(|_| std::env::var("HOSTNAME"))
-        .unwrap_or_else(|_| "unknown".into())
+    // Windows has no /etc/hostname; check COMPUTERNAME first there.
+    // On Unix, /etc/hostname is reliable but may be absent on systemd-
+    // hostnamed distros, so fall back to HOSTNAME.
+    #[cfg(target_os = "windows")]
+    {
+        std::env::var("COMPUTERNAME")
+            .or_else(|_| std::env::var("HOSTNAME"))
+            .unwrap_or_else(|_| "unknown".into())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        std::fs::read_to_string("/etc/hostname")
+            .map(|s| s.trim().to_string())
+            .or_else(|_| {
+                std::fs::read_to_string("/proc/sys/kernel/hostname").map(|s| s.trim().to_string())
+            })
+            .or_else(|_| std::env::var("HOSTNAME"))
+            .unwrap_or_else(|_| "unknown".into())
+    }
 }
 
 #[cfg(unix)]

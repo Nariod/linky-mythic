@@ -231,6 +231,8 @@ func pkcs7Pad(data []byte, blockSize int) []byte {
 // RegisterAllCommands registers every linky command with the Mythic container.
 func RegisterAllCommands() {
 	registerShell()
+	registerCmd()
+	registerPowershell()
 	registerLs()
 	registerCd()
 	registerPwd()
