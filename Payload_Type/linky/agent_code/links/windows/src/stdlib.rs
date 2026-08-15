@@ -178,38 +178,80 @@ fn collect_system_info() -> String {
 }
 
 fn list_processes_browser() -> link_common::CommandOutput {
-    let output = match silent_command("tasklist", &["/FO", "CSV", "/V", "/NH"]).output() {
+    // Use wmic instead of tasklist so we get ParentProcessId (tasklist does
+    // not expose PPID). Without PPID, Mythic's Process Browser cannot build
+    // the process tree, which is the whole point of the structured output.
+    // wmic /format:csv emits a header row, then rows prefixed by Node.
+    let output = match silent_command(
+        "wmic",
+        &[
+            "process",
+            "get",
+            "Name,ProcessId,ParentProcessId,ExecutablePath",
+            "/format:csv",
+        ],
+    )
+    .output()
+    {
         Ok(o) => o,
-        Err(e) => return format!("[-] Failed to execute tasklist: {}", e).into(),
+        Err(e) => return format!("[-] Failed to execute wmic: {}", e).into(),
     };
 
     if !output.status.success() {
-        return "[-] tasklist command failed".to_string().into();
+        return "[-] wmic command failed".to_string().into();
     }
 
     let output_str = String::from_utf8_lossy(&output.stdout);
     let mut text_lines = Vec::new();
     let mut entries = Vec::new();
-    text_lines.push("Name\tPID\tSession\tSession#\tMem Usage".to_string());
+    text_lines.push("PID\tPPID\tName\tPath".to_string());
 
-    for line in output_str.lines() {
-        if line.trim().is_empty() {
+    // wmic csv: first non-empty line is the header (Node,ExecutablePath,Name,ParentProcessId,ProcessId).
+    // Column order is alphabetical, not the order we requested, so we build
+    // a header->index map and look up by name to stay robust.
+    let lines: Vec<&str> = output_str
+        .lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty())
+        .collect();
+    if lines.is_empty() {
+        return "[-] no process data".to_string().into();
+    }
+
+    let header: Vec<&str> = lines[0].split(',').map(|f| f.trim()).collect();
+    let col =
+        |name: &str| -> Option<usize> { header.iter().position(|h| h.eq_ignore_ascii_case(name)) };
+    let i_name = col("Name").unwrap_or(0);
+    let i_pid = col("ProcessId").unwrap_or(0);
+    let i_ppid = col("ParentProcessId").unwrap_or(0);
+    let i_path = col("ExecutablePath");
+
+    for line in &lines[1..] {
+        let fields: Vec<&str> = line.split(',').map(|f| f.trim()).collect();
+        if fields.is_empty() || fields.iter().all(|f| f.is_empty()) {
             continue;
         }
-        let fields: Vec<&str> = line.split(',').map(|f| f.trim_matches('"')).collect();
-        if fields.len() < 2 {
-            continue;
-        }
-        let name = fields[0].to_string();
-        let pid: u32 = fields[1].parse().unwrap_or(0);
-        text_lines.push(line.replace(',', "\t"));
+        let name = fields.get(i_name).copied().unwrap_or("").to_string();
+        let pid: u32 = fields.get(i_pid).and_then(|s| s.parse().ok()).unwrap_or(0);
+        let ppid: u32 = fields.get(i_ppid).and_then(|s| s.parse().ok()).unwrap_or(0);
+        let bin_path = i_path
+            .and_then(|i| fields.get(i).copied())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
+        text_lines.push(format!(
+            "{}\t{}\t{}\t{}",
+            pid,
+            ppid,
+            name,
+            bin_path.as_deref().unwrap_or("")
+        ));
         entries.push(link_common::ProcessEntry {
             process_id: pid,
             name,
-            parent_process_id: 0,
-            user: fields.get(6).map(|s| s.to_string()),
+            parent_process_id: ppid,
+            user: None,
             command_line: None,
-            bin_path: None,
+            bin_path,
             architecture: None,
         });
     }
