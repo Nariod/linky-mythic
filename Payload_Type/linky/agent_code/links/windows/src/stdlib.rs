@@ -89,14 +89,7 @@ fn dispatch(command: &str, parameters: &str) -> link_common::CommandOutput {
             }
             .into()
         }
-        _ => {
-            let cmd = link_common::extract_param(parameters, "command");
-            shell_exec(
-                "cmd.exe",
-                &["/C", if cmd.is_empty() { parameters } else { &cmd }],
-            )
-            .into()
-        }
+        _ => format!("[-] unknown command: {}", command).into(),
     }
 }
 

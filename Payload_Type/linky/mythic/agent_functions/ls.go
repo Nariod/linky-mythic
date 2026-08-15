@@ -5,8 +5,9 @@ import agentstructs "github.com/MythicMeta/MythicContainer/agent_structs"
 func registerLs() {
 	agentstructs.AllPayloadData.Get("linky").AddCommand(agentstructs.Command{
 		Name: "ls", Description: "List directory contents (populates Mythic file browser)", HelpString: "ls [path]", Version: 1,
-		MitreAttackMappings: []string{"T1083"},
-		CommandAttributes:   agentstructs.CommandAttribute{SupportedOS: []string{agentstructs.SUPPORTED_OS_LINUX, agentstructs.SUPPORTED_OS_WINDOWS, agentstructs.SUPPORTED_OS_MACOS}},
+		MitreAttackMappings:    []string{"T1083"},
+		SupportedUIFeatures:    []string{"file_browser:list"},
+		CommandAttributes:      agentstructs.CommandAttribute{SupportedOS: []string{agentstructs.SUPPORTED_OS_LINUX, agentstructs.SUPPORTED_OS_WINDOWS, agentstructs.SUPPORTED_OS_MACOS}},
 		CommandParameters: []agentstructs.CommandParameter{
 			{
 				Name: "path", CLIName: "path",

@@ -138,8 +138,13 @@ fn make_dir(parameters: &str) -> String {
 
 fn execute_cmd(parameters: &str) -> String {
     let raw = crate::extract_param(parameters, "command");
-    let input = if raw.is_empty() { parameters } else { &raw };
-    let parts: Vec<&str> = input.split_whitespace().collect();
+    // Do NOT fall back to the raw JSON `parameters` when the "command" key is
+    // absent — that would pass a JSON blob (e.g. '{"path":"/tmp"}') to
+    // Command::new, which is never the intended behaviour.
+    if raw.is_empty() {
+        return "[-] Usage: execute <binary> [args...]".into();
+    }
+    let parts: Vec<&str> = raw.split_whitespace().collect();
     if parts.is_empty() {
         return "[-] Usage: execute <binary> [args...]".into();
     }

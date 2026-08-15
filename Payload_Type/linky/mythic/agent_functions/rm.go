@@ -7,7 +7,8 @@ import (
 func registerRm() {
 	agentstructs.AllPayloadData.Get("linky").AddCommand(agentstructs.Command{
 		Name: "rm", Description: "Remove a file or directory (recursive)", HelpString: "rm <path>", Version: 1,
-		CommandAttributes: agentstructs.CommandAttribute{SupportedOS: []string{agentstructs.SUPPORTED_OS_LINUX, agentstructs.SUPPORTED_OS_WINDOWS, agentstructs.SUPPORTED_OS_MACOS}},
+		SupportedUIFeatures: []string{"file_browser:remove"},
+		CommandAttributes:   agentstructs.CommandAttribute{SupportedOS: []string{agentstructs.SUPPORTED_OS_LINUX, agentstructs.SUPPORTED_OS_WINDOWS, agentstructs.SUPPORTED_OS_MACOS}},
 		CommandParameters: []agentstructs.CommandParameter{
 			{
 				Name: "path", CLIName: "path",

