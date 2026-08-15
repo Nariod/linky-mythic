@@ -509,17 +509,11 @@ pub fn list_dir_browser(path: &str) -> CommandOutput {
 
     match std::fs::read_dir(&resolved) {
         Ok(entries) => {
-            let mut text_items = Vec::new();
             let mut file_entries = Vec::new();
             for entry in entries.flatten() {
                 let entry_name = entry.file_name().to_string_lossy().into_owned();
                 let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
                 let metadata = entry.metadata().ok();
-                text_items.push(if is_dir {
-                    format!("{}/", entry_name)
-                } else {
-                    entry_name.clone()
-                });
                 file_entries.push(FileBrowserEntry {
                     name: entry_name,
                     is_file: !is_dir,
@@ -527,8 +521,19 @@ pub fn list_dir_browser(path: &str) -> CommandOutput {
                     permissions: metadata.as_ref().map(|m| file_permissions(m)),
                 });
             }
-            text_items.sort();
+            // Sort once, by name, then derive the text view from the same
+            // sorted order so the user_output and the file_browser JSON match.
             file_entries.sort_by(|a, b| a.name.cmp(&b.name));
+            let text_items: Vec<String> = file_entries
+                .iter()
+                .map(|e| {
+                    if e.is_file {
+                        e.name.clone()
+                    } else {
+                        format!("{}/", e.name)
+                    }
+                })
+                .collect();
 
             CommandOutput {
                 text: text_items.join("\n"),
