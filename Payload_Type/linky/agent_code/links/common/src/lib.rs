@@ -1097,6 +1097,13 @@ pub fn run_c2_loop<F>(
 mod tests {
     use super::*;
     use crate::dispatch::dispatch_common;
+    use std::sync::Mutex;
+
+    // The sleep/jitter/kill-date state lives in process-wide static atomics.
+    // Tests that read or write that state must hold this lock so they don't
+    // race each other when cargo runs tests in parallel (observed flake in
+    // CI: test_sleep_jitter_clamped_to_100 saw a concurrent reset to 0).
+    static GLOBAL_STATE_LOCK: Mutex<()> = Mutex::new(());
 
     fn test_key() -> [u8; 32] {
         use sha2::{Digest, Sha256};
@@ -1210,15 +1217,17 @@ mod tests {
     // QUAL-04: sleep used float math with precision/edge-case issues; it now
     // parses as f64 then casts. Pin the observable behaviour.
 
-    fn reset_sleep_state() {
+    fn reset_sleep_state() -> std::sync::MutexGuard<'static, ()> {
+        let guard = GLOBAL_STATE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         set_sleep_seconds(5);
         set_jitter_percent(0);
+        guard
     }
 
     #[test]
     fn test_sleep_whitespace_only_does_not_panic() {
         // RS-02 regression guard.
-        reset_sleep_state();
+        let _g = reset_sleep_state();
         let out = handle_sleep_command("   ");
         assert!(out.starts_with("sleep:"), "whitespace-only: {}", out);
         assert_eq!(get_sleep_seconds(), 5);
@@ -1227,14 +1236,14 @@ mod tests {
 
     #[test]
     fn test_sleep_empty_input_shows_status() {
-        reset_sleep_state();
+        let _g = reset_sleep_state();
         let out = handle_sleep_command("");
         assert!(out.starts_with("sleep:"));
     }
 
     #[test]
     fn test_sleep_sets_seconds_and_jitter() {
-        reset_sleep_state();
+        let _g = reset_sleep_state();
         let out = handle_sleep_command("30 10");
         assert_eq!(get_sleep_seconds(), 30);
         assert_eq!(get_jitter_percent(), 10);
@@ -1243,7 +1252,7 @@ mod tests {
 
     #[test]
     fn test_sleep_seconds_only() {
-        reset_sleep_state();
+        let _g = reset_sleep_state();
         handle_sleep_command("42");
         assert_eq!(get_sleep_seconds(), 42);
         assert_eq!(get_jitter_percent(), 0);
@@ -1254,14 +1263,14 @@ mod tests {
         // QUAL-04: f64::parse("-5") succeeds, `as u64` saturates negatives to 0.
         // Document the pinned behaviour so a future "fix" to reject negatives is
         // a deliberate, test-updating decision rather than a silent change.
-        reset_sleep_state();
+        let _g = reset_sleep_state();
         handle_sleep_command("-5");
         assert_eq!(get_sleep_seconds(), 0);
     }
 
     #[test]
     fn test_sleep_non_numeric_returns_usage() {
-        reset_sleep_state();
+        let _g = reset_sleep_state();
         let out = handle_sleep_command("abc");
         assert!(out.starts_with("[-]"));
         // State unchanged.
@@ -1270,7 +1279,7 @@ mod tests {
 
     #[test]
     fn test_sleep_invalid_jitter_keeps_seconds() {
-        reset_sleep_state();
+        let _g = reset_sleep_state();
         // Valid seconds, junk jitter: seconds set, jitter unchanged.
         handle_sleep_command("20 notanumber");
         assert_eq!(get_sleep_seconds(), 20);
@@ -1279,7 +1288,7 @@ mod tests {
 
     #[test]
     fn test_sleep_jitter_clamped_to_100() {
-        reset_sleep_state();
+        let _g = reset_sleep_state();
         handle_sleep_command("10 150");
         assert_eq!(get_jitter_percent(), 100);
     }
@@ -1288,6 +1297,7 @@ mod tests {
 
     #[test]
     fn test_killdate_empty_shows_unset() {
+        let _g = reset_sleep_state();
         set_kill_date(None);
         let out = handle_killdate_command("");
         assert_eq!(out, "no killdate set");
@@ -1295,6 +1305,7 @@ mod tests {
 
     #[test]
     fn test_killdate_set_and_clear() {
+        let _g = reset_sleep_state();
         set_kill_date(None);
         let out = handle_killdate_command("1700000000");
         assert_eq!(out, "[+] killdate: 1700000000");
@@ -1307,6 +1318,7 @@ mod tests {
 
     #[test]
     fn test_killdate_clear_case_insensitive() {
+        let _g = reset_sleep_state();
         set_kill_date(Some(123));
         handle_killdate_command("CLEAR");
         assert_eq!(get_kill_date(), None);
@@ -1314,6 +1326,7 @@ mod tests {
 
     #[test]
     fn test_killdate_invalid_returns_usage() {
+        let _g = reset_sleep_state();
         set_kill_date(None);
         let out = handle_killdate_command("not-a-timestamp");
         assert!(out.starts_with("[-]"));
@@ -1322,6 +1335,7 @@ mod tests {
 
     #[test]
     fn test_killdate_shows_current_when_set() {
+        let _g = reset_sleep_state();
         set_kill_date(Some(9999999999));
         let out = handle_killdate_command("");
         assert_eq!(out, "killdate: 9999999999");
@@ -1336,12 +1350,14 @@ mod tests {
 
     #[test]
     fn test_should_exit_no_killdate() {
+        let _g = reset_sleep_state();
         set_kill_date(None);
         assert!(!should_exit());
     }
 
     #[test]
     fn test_should_exit_future_killdate_not_expired() {
+        let _g = reset_sleep_state();
         // Far-future timestamp: not expired.
         set_kill_date(Some(i64::MAX));
         assert!(!should_exit());
@@ -1350,6 +1366,7 @@ mod tests {
 
     #[test]
     fn test_should_exit_past_killdate_expired() {
+        let _g = reset_sleep_state();
         // Timestamp in the past relative to any modern clock: expired.
         set_kill_date(Some(1));
         assert!(should_exit());
@@ -1528,18 +1545,18 @@ mod tests {
     #[test]
     fn test_dispatch_common_sleep_via_json_params() {
         // BUG-04 / BUG-08 regression: sleep must accept JSON {seconds, jitter}.
-        reset_sleep_state();
+        let _g = reset_sleep_state();
         let out = dispatch_common("sleep", r#"{"seconds": 42, "jitter": 7}"#);
         let out = out.expect("sleep handled by dispatch_common");
         assert!(out.text.starts_with("[+]"));
         assert_eq!(get_sleep_seconds(), 42);
         assert_eq!(get_jitter_percent(), 7);
-        reset_sleep_state();
+        let _g = reset_sleep_state();
     }
 
     #[test]
     fn test_dispatch_common_sleep_json_missing_jitter() {
-        reset_sleep_state();
+        let _g = reset_sleep_state();
         let out = dispatch_common("sleep", r#"{"seconds": 42}"#);
         let out = out.expect("sleep handled");
         assert!(out.text.starts_with("[+]"));
@@ -1547,11 +1564,12 @@ mod tests {
         // Jitter absent → extract_param returns "" → handle_sleep_command
         // gets "42 " which split_whitespace reduces to ["42"], jitter stays 0.
         assert_eq!(get_jitter_percent(), 0);
-        reset_sleep_state();
+        let _g = reset_sleep_state();
     }
 
     #[test]
     fn test_dispatch_common_killdate_via_json() {
+        let _g = reset_sleep_state();
         set_kill_date(None);
         let out = dispatch_common("killdate", r#"{"date": "1700000000"}"#);
         let out = out.expect("killdate handled");
