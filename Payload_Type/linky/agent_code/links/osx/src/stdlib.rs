@@ -124,7 +124,12 @@ fn list_processes_browser() -> link_common::CommandOutput {
 
     link_common::CommandOutput {
         text: raw,
-        processes: Some(entries),
+        processes: Some(link_common::ProcessBrowserResult {
+            host: hostname(),
+            os: "macos".to_string(),
+            update_deleted: None,
+            processes: entries,
+        }),
         file_browser: None,
     }
 }

@@ -255,7 +255,12 @@ fn list_processes_browser() -> link_common::CommandOutput {
 
     link_common::CommandOutput {
         text: text_lines.join("\n"),
-        processes: Some(entries),
+        processes: Some(link_common::ProcessBrowserResult {
+            host: hostname(),
+            os: "linux".to_string(),
+            update_deleted: None,
+            processes: entries,
+        }),
         file_browser: None,
     }
 }
