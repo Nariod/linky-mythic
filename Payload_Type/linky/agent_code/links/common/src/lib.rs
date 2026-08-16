@@ -28,6 +28,18 @@ pub struct ProcessEntry {
     pub architecture: Option<String>,
 }
 
+/// Mythic v4.0 Process Browser envelope. Wraps the process array with
+/// host/os metadata so Mythic can unify process lists across callbacks.
+/// (v3.4 sent a bare Vec<ProcessEntry> with host/os duplicated per entry.)
+#[derive(serde::Serialize, Clone)]
+pub struct ProcessBrowserResult {
+    pub host: String,
+    pub os: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub update_deleted: Option<bool>,
+    pub processes: Vec<ProcessEntry>,
+}
+
 #[derive(serde::Serialize, Clone)]
 pub struct FileBrowserEntry {
     pub name: String,
@@ -57,7 +69,7 @@ pub struct FileBrowserResult {
 
 pub struct CommandOutput {
     pub text: String,
-    pub processes: Option<Vec<ProcessEntry>>,
+    pub processes: Option<ProcessBrowserResult>,
     pub file_browser: Option<FileBrowserResult>,
 }
 
@@ -138,7 +150,7 @@ pub struct TaskResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub upload: Option<UploadRequest>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub processes: Option<Vec<ProcessEntry>>,
+    pub processes: Option<ProcessBrowserResult>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_browser: Option<FileBrowserResult>,
 }
