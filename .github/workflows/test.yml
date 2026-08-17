@@ -54,6 +54,21 @@ jobs:
         if: matrix.target == 'x86_64-pc-windows-gnu'
         run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64
 
+      # `ring` (pulled in by ureq+rustls) cannot build for x86_64-apple-darwin
+      # on a Linux runner: its build script emits macOS-only cc flags
+      # (-arch, -mmacosx-version-min) that no Linux toolchain understands.
+      # cargo-zigbuild routes C compilation through `zig cc`, which knows how to
+      # target darwin from Linux. See ring issue #1442.
+      - name: Install zig (macOS cross-compile)
+        if: matrix.target == 'x86_64-apple-darwin'
+        uses: mlugg/setup-zig@v1
+
+      - name: Install cargo-zigbuild (macOS cross-compile)
+        if: matrix.target == 'x86_64-apple-darwin'
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-zigbuild
+
       - name: Cargo check for ${{ matrix.target }}
         working-directory: Payload_Type/linky/agent_code
         env:
@@ -61,7 +76,13 @@ jobs:
           IMPLANT_SECRET: x
           PAYLOAD_UUID: x
           CALLBACK_URI: /
-        run: cargo check --target ${{ matrix.target }}
+        # macOS target uses cargo-zigbuild so `ring`'s C sources compile via zig cc.
+        run: |
+          if [ "${{ matrix.target }}" = "x86_64-apple-darwin" ]; then
+            cargo zigbuild --check --target ${{ matrix.target }}
+          else
+            cargo check --target ${{ matrix.target }}
+          fi
 
   go-build:
     name: Go build check
@@ -79,7 +100,9 @@ jobs:
 
       - name: Download Go modules
         working-directory: Payload_Type/linky
-        run: go mod download
+        # go mod tidy syncs go.sum with go.mod (the committed go.sum was stale
+        # w.r.t. MythicContainer v1.7.0-rc4, which broke `go mod download`).
+        run: go mod tidy
 
       - name: Build Go payload type
         working-directory: Payload_Type/linky

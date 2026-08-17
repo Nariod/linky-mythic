@@ -1655,7 +1655,8 @@ mod tests {
         assert!(out.text.starts_with("[+]"));
         assert_eq!(get_sleep_seconds(), 42);
         assert_eq!(get_jitter_percent(), 7);
-        let _g = reset_sleep_state();
+        // Reset is handled by _g dropping at scope end; re-locking
+        // here would deadlock on the non-reentrant GLOBAL_STATE_LOCK.
     }
 
     #[test]
@@ -1668,7 +1669,7 @@ mod tests {
         // Jitter absent → extract_param returns "" → handle_sleep_command
         // gets "42 " which split_whitespace reduces to ["42"], jitter stays 0.
         assert_eq!(get_jitter_percent(), 0);
-        let _g = reset_sleep_state();
+        // See note above: do not re-lock here (deadlock on GLOBAL_STATE_LOCK).
     }
 
     #[test]
