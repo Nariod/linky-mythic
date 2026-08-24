@@ -3,6 +3,8 @@
 > **For AI agents working on this project**: read this file in full before touching any code.
 > Complete phases in order. Each task specifies exact files, diffs, and validation steps.
 > Run the validation command at the end of each phase before moving on.
+> **Feuille de route globale**: Voir [ROADMAP.md](ROADMAP.md) pour la vision stratégique et les priorités.
+
 
 ---
 
