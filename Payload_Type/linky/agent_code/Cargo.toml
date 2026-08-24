@@ -16,3 +16,13 @@ panic = "abort"
 
 [profile.release-shellcode]
 inherits = "release"
+
+# Configuration pour la cross-compilation macOS
+# Utiliser le linker osxcross pour les cibles Apple
+[target.x86_64-apple-darwin]
+linker = "x86_64-apple-darwin21.4-clang"
+rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+
+[target.aarch64-apple-darwin]
+linker = "aarch64-apple-darwin21.4-clang"
+rustflags = ["-C", "link-arg=-fuse-ld=lld"]

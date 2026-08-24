@@ -63,6 +63,14 @@ func payloadDefinition() agentstructs.PayloadType {
 				ParameterType: agentstructs.BUILD_PARAMETER_TYPE_BOOLEAN,
 				DefaultValue:  false,
 			},
+			{
+				Name:          "architecture",
+				Description:   "Target architecture (macOS: x86_64 or aarch64/arm64)",
+				Required:      false,
+				ParameterType: agentstructs.BUILD_PARAMETER_TYPE_CHOOSE_ONE,
+				Choices:       []string{"x86_64", "aarch64", "arm64"},
+				DefaultValue:  "x86_64",
+			},
 		},
 	}
 }

@@ -14,11 +14,36 @@ RUN apt-get update && apt-get install -y \
     pkg-config \
     libssl-dev \
     binutils \
+    cmake \
+    git \
+    curl \
+    unzip \
+    xz-utils \
+    python3 \
+    libfuse2 \
     && rm -rf /var/lib/apt/lists/*
+
+# Install osxcross for macOS cross-compilation
+RUN mkdir -p /opt/osxcross && \
+    git clone --depth 1 https://github.com/tpoechtrager/osxcross /opt/osxcross && \
+    cd /opt/osxcross && \
+    mkdir -p tarballs && \
+    # Download pre-built macOS SDK (try multiple sources)
+    (curl -L -o tarballs/MacOSX13.1.sdk.tar.xz https://github.com/tpoechtrager/osxcross-sdk/releases/latest/download/MacOSX13.1.sdk.tar.xz 2>/dev/null || \
+     curl -L -o tarballs/MacOSX13.1.sdk.tar.xz https://github.com/robherrmann/osx-sdk/releases/download/v1.0/MacOSX13.1.sdk.tar.xz 2>/dev/null || \
+     echo "Warning: Could not download macOS SDK. macOS builds will not work.") && \
+    # Build osxcross (unattended mode)
+    UNATTENDED=1 OSX_VERSION_MIN=10.7 SDK_VERSION=13.1 ./build.sh || \
+    echo "Warning: osxcross build failed. macOS builds will not work."
+
+# Add osxcross to PATH
+ENV PATH="/opt/osxcross/target/bin:${PATH}"
 
 RUN rustup target add \
     x86_64-unknown-linux-musl \
-    x86_64-pc-windows-gnu
+    x86_64-pc-windows-gnu \
+    x86_64-apple-darwin \
+    aarch64-apple-darwin
 
 WORKDIR /Mythic
 

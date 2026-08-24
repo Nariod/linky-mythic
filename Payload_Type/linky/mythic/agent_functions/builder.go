@@ -117,8 +117,15 @@ func Build(input agentstructs.PayloadBuildMessage) agentstructs.PayloadBuildResp
 		outputExt = ".exe"
 	case "macos":
 		crateDir = filepath.Join(agentDir, "links/osx")
-		target = "x86_64-apple-darwin"
-		binName = "link-osx"
+		// Check if we're building for ARM64 macOS
+		arch, _ := input.BuildParameters.GetStringArg("architecture")
+		if arch == "aarch64" || arch == "arm64" {
+			target = "aarch64-apple-darwin"
+			binName = "link-osx-arm64"
+		} else {
+			target = "x86_64-apple-darwin"
+			binName = "link-osx"
+		}
 		outputExt = ""
 	default:
 		resp.BuildStdErr = fmt.Sprintf("unknown target_os: %s", targetOS)
