@@ -52,6 +52,20 @@ if [ ! -x "$MYTHIC_DIR/mythic-cli" ]; then
 fi
 
 # ── 3. Install linky + http C2 profile ─────────────────────────────────────
+# 'mythic-cli install folder' builds the service image via docker compose,
+# which boots the full stack on first run. Nginx fails its health check if
+# the SSL cert is missing, and mythic-cli only generates it during 'start'
+# (serviceExecution.go), so pre-generate a self-signed pair here.
+NGINX_SSL_DIR="$MYTHIC_DIR/nginx-docker/ssl"
+if [ ! -f "$NGINX_SSL_DIR/mythic-cert.crt" ]; then
+    log "Pre-generating nginx SSL certificate"
+    mkdir -p "$NGINX_SSL_DIR"
+    openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
+        -keyout "$NGINX_SSL_DIR/mythic-ssl.key" \
+        -out "$NGINX_SSL_DIR/mythic-cert.crt" \
+        -days 365 -nodes -subj "/CN=mythic" >/dev/null 2>&1 \
+        || fail "openssl failed to generate the nginx self-signed certificate"
+fi
 log "Installing linky payload type (from $(basename "$REPO_ROOT"))"
 (cd "$MYTHIC_DIR" && ./mythic-cli install folder "$REPO_ROOT" -f) \
     || fail "mythic-cli install folder failed for linky"
