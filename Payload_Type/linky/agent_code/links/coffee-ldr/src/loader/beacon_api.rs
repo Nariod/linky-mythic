@@ -4,7 +4,7 @@ use core::slice;
 use std::{
     alloc::Layout,
     ffi::{c_char, c_int, c_short, CStr},
-    intrinsics, ptr,
+    ptr,
 };
 
 use tracing::warn;
@@ -448,7 +448,7 @@ extern "C" fn beacon_format_append(format: *mut Formatp, text: *const c_char, le
     }
 
     unsafe {
-        intrinsics::copy_nonoverlapping(text, format_parser.original, len as usize);
+        ptr::copy_nonoverlapping(text, format_parser.original, len as usize);
     }
 
     format_parser.buffer = unsafe { format_parser.buffer.add(len as usize) };
@@ -492,7 +492,7 @@ unsafe extern "C" fn beacon_format_printf(format: *mut Formatp, fmt: *const c_ch
     buffer[bytes_written as usize] = 0;
 
     // Copy the formatted string to the format buffer
-    intrinsics::copy_nonoverlapping(
+    ptr::copy_nonoverlapping(
         buffer.as_ptr(),
         format_parser.buffer as *mut u8,
         bytes_written as usize + 1, // Include null terminator
@@ -576,11 +576,7 @@ extern "C" fn beacon_format_int(format: *mut Formatp, value: c_int) {
     let mut result = swapped.to_be_bytes();
 
     unsafe {
-        intrinsics::copy_nonoverlapping(
-            result.as_mut_ptr(),
-            format_parser.original.cast::<u8>(),
-            4,
-        );
+        ptr::copy_nonoverlapping(result.as_mut_ptr(), format_parser.original.cast::<u8>(), 4);
     }
 
     format_parser.buffer = unsafe { format_parser.buffer.add(4) };

@@ -1,5 +1,5 @@
 #![allow(static_mut_refs)]
-use std::{ffi::c_void, intrinsics, ops::Add};
+use std::{ffi::c_void, ops::Add};
 
 use goblin::pe::{
     header::{COFF_MACHINE_X86, COFF_MACHINE_X86_64},
@@ -342,11 +342,11 @@ impl<'a> Coffee<'a> {
                 );
 
                 unsafe {
-                    intrinsics::volatile_copy_nonoverlapping_memory(
-                        section_base.cast::<u8>(),
+                    std::ptr::copy_nonoverlapping(
                         self.coff_buffer
                             .as_ptr()
                             .add(section.pointer_to_raw_data as usize),
+                        section_base.cast::<u8>(),
                         section_size,
                     );
                 }
@@ -359,7 +359,7 @@ impl<'a> Coffee<'a> {
                 );
 
                 unsafe {
-                    intrinsics::volatile_set_memory(section_base.cast::<u8>(), 0, section_size);
+                    std::ptr::write_bytes(section_base.cast::<u8>(), 0, section_size);
                 }
             }
         }

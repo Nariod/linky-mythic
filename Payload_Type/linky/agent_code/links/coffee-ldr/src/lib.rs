@@ -1,5 +1,6 @@
+#![cfg_attr(windows, feature(c_variadic))]
+#![cfg_attr(windows, feature(core_intrinsics))]
 #![allow(internal_features)]
-#![feature(c_variadic)]
-#![feature(core_intrinsics)]
+
 #[cfg(windows)]
 pub mod loader;
