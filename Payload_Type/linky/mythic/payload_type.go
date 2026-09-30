@@ -22,7 +22,7 @@ func payloadDefinition() agentstructs.PayloadType {
 		SupportedOS:            []string{agentstructs.SUPPORTED_OS_MACOS, agentstructs.SUPPORTED_OS_LINUX, agentstructs.SUPPORTED_OS_WINDOWS},
 		Wrapper:                false,
 		SupportsDynamicLoading: false,
-		Description:            "Rust-native cross-platform C2 agent. Minimal, auditable, container-first.",
+		Description:            "Rust-native cross-platform C2 agent. Thin implant, operator-supplied BOFs. Minimal, auditable, container-first.",
 		SupportedC2Profiles:    []string{"http"},
 		MythicEncryptsData:     true,
 		BuildParameters: []agentstructs.BuildParameter{

@@ -6,6 +6,9 @@ COPY . .
 RUN CGO_ENABLED=0 go build -o linky_payload_type .
 
 FROM rust:1.86
+# coffee-ldr (vendored COFF loader) requires nightly-only features
+# (c_variadic, core_intrinsics).
+RUN rustup toolchain install nightly
 RUN apt-get update && apt-get install -y \
     musl-tools \
     mingw-w64 \
@@ -38,12 +41,19 @@ RUN mkdir -p /opt/osxcross && \
 # Add osxcross to PATH
 ENV PATH="/opt/osxcross/target/bin:${PATH}"
 
-RUN rustup target add \
+RUN rustup component add rust-src --toolchain nightly && rustup target add \
     x86_64-unknown-linux-musl \
     aarch64-unknown-linux-musl \
     x86_64-pc-windows-gnu \
     x86_64-apple-darwin \
-    aarch64-apple-darwin
+    aarch64-apple-darwin && \
+    rustup target add \
+    x86_64-unknown-linux-musl \
+    aarch64-unknown-linux-musl \
+    x86_64-pc-windows-gnu \
+    x86_64-apple-darwin \
+    aarch64-apple-darwin \
+    --toolchain nightly
 
 WORKDIR /Mythic
 

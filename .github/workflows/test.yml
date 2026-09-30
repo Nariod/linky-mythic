@@ -47,7 +47,14 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Rust stable
+        if: matrix.target != 'x86_64-pc-windows-gnu'
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      # coffee-ldr (BOF loader) needs nightly when building for Windows.
+      - name: Install Rust nightly (Windows target)
+        if: matrix.target == 'x86_64-pc-windows-gnu'
+        uses: dtolnay/rust-toolchain@nightly
         with:
           targets: ${{ matrix.target }}
 
@@ -95,6 +102,33 @@ jobs:
             cargo check --target ${{ matrix.target }}
           fi
 
+  rust-bof-nightly:
+    name: BOF build (nightly, Windows)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Install Rust nightly
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: x86_64-pc-windows-gnu
+      - name: Install mingw-w64
+        run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64
+      - name: Check coffee-ldr and link-windows with cmd-bof
+        working-directory: Payload_Type/linky/agent_code
+        env:
+          CALLBACK: x
+          IMPLANT_SECRET: x
+          PAYLOAD_UUID: x
+          CALLBACK_URI: /
+        run: |
+          cargo +nightly check -p coffee-ldr --target x86_64-pc-windows-gnu
+          cargo +nightly check -p link-windows --target x86_64-pc-windows-gnu
+          cargo +nightly check -p link-windows --no-default-features --features cmd-bof --target x86_64-pc-windows-gnu
+          cargo +nightly build -p link-windows --profile release --target x86_64-pc-windows-gnu
+
   rust-feature-matrix:
     name: Rust conditional-compilation matrix
     runs-on: ubuntu-latest
@@ -105,6 +139,8 @@ jobs:
         uses: actions/checkout@v4
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-gnu
       - name: Check every platform with all commands disabled
         working-directory: Payload_Type/linky/agent_code
         env:
@@ -144,7 +180,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       - name: Install Rust stable
+        if: matrix.target != 'x86_64-pc-windows-gnu'
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      # coffee-ldr (BOF loader) needs nightly when building for Windows.
+      - name: Install Rust nightly (Windows target)
+        if: matrix.target == 'x86_64-pc-windows-gnu'
+        uses: dtolnay/rust-toolchain@nightly
         with:
           targets: ${{ matrix.target }}
       - name: Install cross-compile dependencies

@@ -4,6 +4,7 @@ members = [
     "links/linux",
     "links/osx",
     "links/common",
+    "links/coffee-ldr",
 ]
 resolver = "2"
 

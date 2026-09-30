@@ -152,6 +152,17 @@ func Build(ctx context.Context, input agentstructs.PayloadBuildMessage) agentstr
 		profile = "release-shellcode"
 	}
 
+	// coffee-ldr (BOF support) requires the nightly toolchain.
+	cargoBin := "cargo"
+	for _, c := range commandsParam {
+		if c == "bof" {
+			cargoBin = "cargo+nightly"
+			break
+		}
+	}
+	if len(commandsParam) == 0 {
+		cargoBin = "cargo+nightly"
+	}
 	args := []string{
 		"build",
 		"--profile", profile,
@@ -163,7 +174,7 @@ func Build(ctx context.Context, input agentstructs.PayloadBuildMessage) agentstr
 	}
 	args = append(args, selectCommandFeatures(targetOS, commandsParam)...)
 	rustflags := "--remap-path-prefix=" + crateDir + "=. -C debuginfo=0"
-	cmd := exec.Command("cargo", args...)
+	cmd := exec.Command(cargoBin, args...)
 	cmd.Dir = crateDir
 	cmd.Env = append(os.Environ(),
 		fmt.Sprintf("CALLBACK=%s", encryptedCallback),
@@ -286,12 +297,14 @@ func RegisterAllCommands() {
 	registerRm()
 	registerMkdir()
 	registerExecute()
+	registerBof()
 }
 
 // commandFeatures maps Mythic command names to the Cargo feature that gates
 // their compilation in the implant. A command absent from the map is always
 // compiled (it has no dedicated feature).
 var commandFeatures = map[string]string{
+	"bof": "cmd-bof",
 	"whoami":     "cmd-whoami",
 	"info":       "cmd-info",
 	"ps":         "cmd-ps",

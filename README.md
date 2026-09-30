@@ -14,6 +14,8 @@ A Mythic payload type providing Rust-native implants for Linux, Windows, and mac
 
 `linky-mythic` is a **Mythic payload type**. It installs into an existing Mythic instance and adds the ability to build and control Rust implants across multiple platforms.
 
+**Design direction: thin implant + BOFs.** The implant keeps a small, auditable core (transport, crypto, dispatch, file transfer). Post-exploitation capability is meant to come from operator-supplied **Beacon Object Files** (Cobalt Strike-compatible COFF objects), loaded and executed in memory via the `bof` command. This keeps the binary small, its detection surface minimal, and its capability set unlimited: every BOF from the existing ecosystem (e.g. [CS-Situational-Awareness-BOF](https://github.com/trustedsec/CS-Situational-Awareness-BOF)) works without recompiling the implant.
+
 This repository does **not** provide:
 
 - a standalone C2 server
@@ -240,6 +242,19 @@ See [TODO.md](TODO.md) Phase 17 for the complete audit report.
 | integrity | Query process integrity level (Low/Medium/High/System) |
 | cmd | Execute via `cmd.exe /C` |
 | powershell | Execute via `powershell.exe -noP -sta -w 1 -c` |
+| bof | Load and execute a Beacon Object File (COFF) in memory. Args use the `bof_pack` format: `int:<n>` `short:<n>` `str:<s>` `wstr:<s>` `bin:<base64>` |
+
+### BOF command
+
+```text
+bof <file.x64.o> [entrypoint] [args]
+```
+
+- The COFF object is fetched from the Mythic file store in memory (chunked transfer, no disk write) and executed by a vendored [coffee](https://github.com/Nariod/coffee) loader (fork of hakaioffsec/coffee, GPL-3.0, in `agent_code/links/coffee-ldr/`).
+- Compatible with Cobalt Strike BOFs: `go` entrypoint, `BeaconOutput`/`BeaconPrintf`/`BeaconDataParse`/... support, CS argument blob format.
+- Requires the Rust **nightly** toolchain at build time (the vendored loader uses `core_intrinsics`). The Mythic builder switches to `cargo +nightly` automatically when `bof` is in the selected commands.
+- Gated behind the `cmd-bof` Cargo feature (default on). `--no-default-features --features cmd-bof` produces a minimal BOF-only implant.
+- Linux/macOS implants accept the task but report that the BOF runtime is not compiled in (the BOF ecosystem is Windows-centric; ELF-object support may come later).
 
 ---
 
@@ -444,6 +459,9 @@ See [ROADMAP.md](ROADMAP.md) for the strategic roadmap, [TODO.md](TODO.md) for t
 - ~~ARM64 targets~~ ✅ (`aarch64-unknown-linux-musl`, `aarch64-apple-darwin` in the builder and Dockerfile)
 
 ### Medium-term
+- ~~BOF execution (Windows, coffee loader vendored)~~ ✅ (`bof` command, `cmd-bof` feature)
+- Live-test the `bof` command against a Windows target with TrustedSec BOFs (whoami, dir, netstat)
+- BOF execution for Linux/macOS (ELF relocatable objects, à la bof-launcher)
 - Sleep obfuscation (Windows — Ekko/Foliage style, roadmap M1)
 - Verify macOS builds end-to-end (osxcross install in Dockerfile is best-effort; SDK download may fail)
 - `ipinfo` command (network interface info)
