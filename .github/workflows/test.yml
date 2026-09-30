@@ -56,12 +56,12 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64
 
       # `ring` (pulled in by ureq+rustls) cannot build for x86_64-apple-darwin
-      # on a Linux runner: its build script emits macOS-only cc flags
+      # or aarch64-unknown-linux-musl on a Linux runner: its build script emits macOS-only cc flags
       # (-arch, -mmacosx-version-min) that no Linux toolchain understands.
       # cargo-zigbuild routes C compilation through `zig cc`, which knows how to
-      # target darwin from Linux. See ring issue #1442.
+      # target darwin and musl from Linux. See ring issue #1442.
       - name: Install zig (macOS cross-compile)
-        if: matrix.target == 'x86_64-apple-darwin'
+        if: matrix.target == 'x86_64-apple-darwin' || matrix.target == 'aarch64-unknown-linux-musl'
         run: |
           # mlugg/setup-zig@v1 fetches from ziglang.org/builds (dev builds only)
           # and 404s; install a stable release tarball directly instead.
@@ -73,7 +73,7 @@ jobs:
           echo "/opt/zig" >> "$GITHUB_PATH"
 
       - name: Install cargo-zigbuild (macOS cross-compile)
-        if: matrix.target == 'x86_64-apple-darwin'
+        if: matrix.target == 'x86_64-apple-darwin' || matrix.target == 'aarch64-unknown-linux-musl'
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-zigbuild
@@ -89,7 +89,7 @@ jobs:
         # Note: recent cargo-zigbuild releases dropped the `--check` flag, so we run
         # a full zigbuild (debug profile) to validate compilation.
         run: |
-          if [ "${{ matrix.target }}" = "x86_64-apple-darwin" ]; then
+          if [ "${{ matrix.target }}" = "x86_64-apple-darwin" ] || [ "${{ matrix.target }}" = "aarch64-unknown-linux-musl" ]; then
             cargo zigbuild --target ${{ matrix.target }}
           else
             cargo check --target ${{ matrix.target }}
