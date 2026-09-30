@@ -33,7 +33,7 @@ sudo ./mythic-cli install github https://github.com/Nariod/linky-mythic
 
 ## Current status
 
-**Beta — live-tested.** The codebase has been **validated against a live Mythic v3.4.32 instance** with real implant callbacks (April 2026):
+**Beta — live-tested.** The codebase has been **validated against a live Mythic v3.4.0.52 instance** with real implant callbacks (April 2026):
 
 - ✅ Payload type registers and syncs with Mythic via RabbitMQ
 - ✅ HTTP C2 profile integration (HTTPS recommended, HTTP supported)
@@ -56,7 +56,7 @@ sudo ./mythic-cli install github https://github.com/Nariod/linky-mythic
 |----------|---------|-------|
 | Linux x86_64 | ~1.9 MB | musl, static, stripped, LTO, `opt-level=z`, `panic=abort` |
 | Windows x86_64 | ~2 MB | mingw-w64, stripped |
-| macOS x86_64 | N/A | requires osxcross (not in Dockerfile yet) |
+| macOS x86_64 | N/A | requires osxcross (best-effort in Dockerfile, see Known limitations) |
 
 ### Live command test results (Linux — April 2026, Mythic v3.4.0.52)
 
@@ -82,7 +82,7 @@ sudo ./mythic-cli install github https://github.com/Nariod/linky-mythic
 | execute | ✅ | `/usr/bin/uname -a` → full kernel info |
 | exit | ✅ | clean agent termination |
 
-### Live command test results (Windows — April 2026, Mythic v3.4.32)
+### Live command test results (Windows — April 2026, Mythic v3.4.0.52)
 
 Both build variants tested: **standard** and **indirect syscalls**. All 21 commands pass identically on both.
 
@@ -284,7 +284,7 @@ Competitive reference: [silentwarble/Hannibal](https://github.com/silentwarble/H
 
 ## Known limitations
 
-- macOS cross-compilation requires osxcross (not included in Dockerfile).
+- macOS cross-compilation requires osxcross. The Dockerfile attempts to install it, but SDK download and osxcross build failures are silently ignored (`|| echo "Warning…"`), so a successfully built image does not guarantee working macOS builds. Verify with a test payload build after `mythic-cli install`.
 - No AMSI/ETW bypass yet (see roadmap).
 - `inject` uses Win32 APIs by default; enable `indirect-syscalls` feature for NT API path via syscalls-rs.
 - Binary size gap with pure-C agents like Hannibal (1.9 MB vs 25-45 KB).
@@ -427,7 +427,7 @@ See [TODO.md](TODO.md) for the detailed phase-by-phase plan.
 
 ### Medium-term
 - Sleep obfuscation research (Windows — Ekko-style)
-- Full macOS support with osxcross in Dockerfile
+- Verify macOS builds end-to-end (osxcross install in Dockerfile is best-effort; SDK download may fail)
 - ARM64 targets (`aarch64-unknown-linux-musl`, `aarch64-apple-darwin`)
 
 ### Long-term

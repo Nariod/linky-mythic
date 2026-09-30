@@ -1,6 +1,7 @@
 package agent_functions
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -14,17 +15,17 @@ func registerSleep() {
 		CommandParameters: []agentstructs.CommandParameter{
 			{
 				Name: "seconds", CLIName: "seconds",
-				ParameterType:            agentstructs.COMMAND_PARAMETER_TYPE_NUMBER,
+				ParameterType:             agentstructs.COMMAND_PARAMETER_TYPE_NUMBER,
 				ParameterGroupInformation: []agentstructs.ParameterGroupInfo{{ParameterIsRequired: true, GroupName: "Default"}},
 			},
 			{
 				Name: "jitter", CLIName: "jitter",
-				ParameterType:            agentstructs.COMMAND_PARAMETER_TYPE_NUMBER,
-				DefaultValue:             0,
+				ParameterType:             agentstructs.COMMAND_PARAMETER_TYPE_NUMBER,
+				DefaultValue:              0,
 				ParameterGroupInformation: []agentstructs.ParameterGroupInfo{{ParameterIsRequired: false, GroupName: "Default"}},
 			},
 		},
-		TaskFunctionParseArgString: func(args *agentstructs.PTTaskMessageArgsData, input string) error {
+		TaskFunctionParseArgString: func(ctx context.Context, args *agentstructs.PTTaskMessageArgsData, input string) error {
 			parts := strings.Fields(input)
 			if len(parts) < 1 {
 				return fmt.Errorf("usage: sleep <seconds> [jitter%%]")
@@ -37,7 +38,7 @@ func registerSleep() {
 			}
 			return nil
 		},
-		TaskFunctionCreateTasking: func(taskData *agentstructs.PTTaskMessageAllData) agentstructs.PTTaskCreateTaskingMessageResponse {
+		TaskFunctionCreateTasking: func(ctx context.Context, taskData *agentstructs.PTTaskMessageAllData) agentstructs.PTTaskCreateTaskingMessageResponse {
 			resp := agentstructs.PTTaskCreateTaskingMessageResponse{TaskID: taskData.Task.ID, Success: true}
 			seconds, _ := taskData.Args.GetNumberArg("seconds")
 			jitter, _ := taskData.Args.GetNumberArg("jitter")

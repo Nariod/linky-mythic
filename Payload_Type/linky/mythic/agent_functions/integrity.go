@@ -1,13 +1,16 @@
 package agent_functions
 
-import agentstructs "github.com/MythicMeta/MythicContainer/agent_structs"
+import (
+	"context"
+	agentstructs "github.com/MythicMeta/MythicContainer/agent_structs"
+)
 
 func registerIntegrity() {
 	agentstructs.AllPayloadData.Get("linky").AddCommand(agentstructs.Command{
 		Name: "integrity", Description: "Query token integrity level (Windows)", HelpString: "integrity", Version: 1,
 		MitreAttackMappings: []string{"T1134"},
 		CommandAttributes:   agentstructs.CommandAttribute{SupportedOS: []string{agentstructs.SUPPORTED_OS_WINDOWS}},
-		TaskFunctionCreateTasking: func(taskData *agentstructs.PTTaskMessageAllData) agentstructs.PTTaskCreateTaskingMessageResponse {
+		TaskFunctionCreateTasking: func(ctx context.Context, taskData *agentstructs.PTTaskMessageAllData) agentstructs.PTTaskCreateTaskingMessageResponse {
 			return agentstructs.PTTaskCreateTaskingMessageResponse{TaskID: taskData.Task.ID, Success: true}
 		},
 	})

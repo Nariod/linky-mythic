@@ -1,6 +1,7 @@
 package agent_functions
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -17,18 +18,18 @@ func registerInject() {
 		CommandParameters: []agentstructs.CommandParameter{
 			{
 				Name: "pid", CLIName: "pid",
-				ParameterType:            agentstructs.COMMAND_PARAMETER_TYPE_NUMBER,
-				Description:              "Target process PID",
+				ParameterType:             agentstructs.COMMAND_PARAMETER_TYPE_NUMBER,
+				Description:               "Target process PID",
 				ParameterGroupInformation: []agentstructs.ParameterGroupInfo{{ParameterIsRequired: true, GroupName: "Default"}},
 			},
 			{
 				Name: "shellcode", CLIName: "shellcode",
-				ParameterType:            agentstructs.COMMAND_PARAMETER_TYPE_STRING,
-				Description:              "Base64-encoded shellcode payload",
+				ParameterType:             agentstructs.COMMAND_PARAMETER_TYPE_STRING,
+				Description:               "Base64-encoded shellcode payload",
 				ParameterGroupInformation: []agentstructs.ParameterGroupInfo{{ParameterIsRequired: true, GroupName: "Default"}},
 			},
 		},
-		TaskFunctionParseArgString: func(args *agentstructs.PTTaskMessageArgsData, input string) error {
+		TaskFunctionParseArgString: func(ctx context.Context, args *agentstructs.PTTaskMessageArgsData, input string) error {
 			var jsonArgs map[string]interface{}
 			if err := json.Unmarshal([]byte(input), &jsonArgs); err == nil {
 				return args.LoadArgsFromJSONString(input)
@@ -46,7 +47,7 @@ func registerInject() {
 			}
 			return args.SetArgValue("shellcode", parts[1])
 		},
-		TaskFunctionCreateTasking: func(taskData *agentstructs.PTTaskMessageAllData) agentstructs.PTTaskCreateTaskingMessageResponse {
+		TaskFunctionCreateTasking: func(ctx context.Context, taskData *agentstructs.PTTaskMessageAllData) agentstructs.PTTaskCreateTaskingMessageResponse {
 			resp := agentstructs.PTTaskCreateTaskingMessageResponse{TaskID: taskData.Task.ID, Success: true}
 			pid, _ := taskData.Args.GetNumberArg("pid")
 			display := fmt.Sprintf("pid=%.0f", pid)

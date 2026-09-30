@@ -1,6 +1,7 @@
 package agent_functions
 
 import (
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/hmac"
@@ -20,7 +21,7 @@ import (
 // Build is called by Mythic each time an operator generates a new payload.
 // It receives build parameters and the payload UUID/key from Mythic, compiles
 // the Rust implant, and returns the binary bytes.
-func Build(input agentstructs.PayloadBuildMessage) agentstructs.PayloadBuildResponse {
+func Build(ctx context.Context, input agentstructs.PayloadBuildMessage) agentstructs.PayloadBuildResponse {
 	resp := agentstructs.PayloadBuildResponse{
 		PayloadUUID: input.PayloadUUID,
 		Success:     false,

@@ -1,6 +1,7 @@
 package agent_functions
 
 import (
+	"context"
 	agentstructs "github.com/MythicMeta/MythicContainer/agent_structs"
 )
 
@@ -17,10 +18,10 @@ func registerRm() {
 				Description:               "File or directory to remove",
 			},
 		},
-		TaskFunctionParseArgString: func(args *agentstructs.PTTaskMessageArgsData, input string) error {
+		TaskFunctionParseArgString: func(ctx context.Context, args *agentstructs.PTTaskMessageArgsData, input string) error {
 			return args.SetArgValue("path", input)
 		},
-		TaskFunctionCreateTasking: func(taskData *agentstructs.PTTaskMessageAllData) agentstructs.PTTaskCreateTaskingMessageResponse {
+		TaskFunctionCreateTasking: func(ctx context.Context, taskData *agentstructs.PTTaskMessageAllData) agentstructs.PTTaskCreateTaskingMessageResponse {
 			return agentstructs.PTTaskCreateTaskingMessageResponse{TaskID: taskData.Task.ID, Success: true}
 		},
 	})

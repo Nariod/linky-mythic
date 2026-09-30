@@ -1,20 +1,23 @@
 package agent_functions
 
-import agentstructs "github.com/MythicMeta/MythicContainer/agent_structs"
+import (
+	"context"
+	agentstructs "github.com/MythicMeta/MythicContainer/agent_structs"
+)
 
 func registerLs() {
 	agentstructs.AllPayloadData.Get("linky").AddCommand(agentstructs.Command{
 		Name: "ls", Description: "List directory contents (populates Mythic file browser)", HelpString: "ls [path]", Version: 1,
-		MitreAttackMappings:    []string{"T1083"},
-		SupportedUIFeatures:    []string{"file_browser:list"},
-		CommandAttributes:      agentstructs.CommandAttribute{SupportedOS: []string{agentstructs.SUPPORTED_OS_LINUX, agentstructs.SUPPORTED_OS_WINDOWS, agentstructs.SUPPORTED_OS_MACOS}},
+		MitreAttackMappings: []string{"T1083"},
+		SupportedUIFeatures: []string{"file_browser:list"},
+		CommandAttributes:   agentstructs.CommandAttribute{SupportedOS: []string{agentstructs.SUPPORTED_OS_LINUX, agentstructs.SUPPORTED_OS_WINDOWS, agentstructs.SUPPORTED_OS_MACOS}},
 		CommandParameters: []agentstructs.CommandParameter{
 			{
 				Name: "path", CLIName: "path",
-				ModalDisplayName: "Directory path",
-				ParameterType:    agentstructs.COMMAND_PARAMETER_TYPE_STRING,
-				Description:      "Directory to list (default: current directory)",
-				DefaultValue:     ".",
+				ModalDisplayName:          "Directory path",
+				ParameterType:             agentstructs.COMMAND_PARAMETER_TYPE_STRING,
+				Description:               "Directory to list (default: current directory)",
+				DefaultValue:              ".",
 				ParameterGroupInformation: []agentstructs.ParameterGroupInfo{{ParameterIsRequired: false, GroupName: "Default"}},
 			},
 		},
@@ -47,13 +50,13 @@ function(task, responses) {
     ], rows: rows}]};
 }`,
 		},
-		TaskFunctionParseArgString: func(args *agentstructs.PTTaskMessageArgsData, input string) error {
+		TaskFunctionParseArgString: func(ctx context.Context, args *agentstructs.PTTaskMessageArgsData, input string) error {
 			if input == "" {
 				input = "."
 			}
 			return args.SetArgValue("path", input)
 		},
-		TaskFunctionCreateTasking: func(taskData *agentstructs.PTTaskMessageAllData) agentstructs.PTTaskCreateTaskingMessageResponse {
+		TaskFunctionCreateTasking: func(ctx context.Context, taskData *agentstructs.PTTaskMessageAllData) agentstructs.PTTaskCreateTaskingMessageResponse {
 			resp := agentstructs.PTTaskCreateTaskingMessageResponse{TaskID: taskData.Task.ID, Success: true}
 			path, _ := taskData.Args.GetStringArg("path")
 			resp.DisplayParams = &path

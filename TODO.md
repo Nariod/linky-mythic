@@ -1341,7 +1341,7 @@ Implémentation d'un proxy SOCKS5 interne pour le pivoting réseau via Mythic.
 ## Phase 17 — Windows live testing & bug fixes ✅
 
 **Date**: April 2026
-**Mythic**: v3.4.32, mythic-cli v0.3.26
+**Mythic**: v3.4.0.52, mythic-cli v0.3.26
 **Test environment**: Ubuntu 25.04 (Docker) + Windows VM (x86_64, user Nariod, High integrity)
 
 Two debug payloads were generated and tested:
