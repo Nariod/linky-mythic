@@ -150,6 +150,22 @@ jobs:
       - name: Install cross-compile dependencies
         if: matrix.target == 'x86_64-pc-windows-gnu'
         run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64
+      # `ring` cannot build for musl without a musl toolchain on the runner;
+      # route its C sources through zig cc, as in the cross-compile job.
+      - name: Install zig (musl release build)
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: |
+          set -euo pipefail
+          ZIG_VERSION=0.16.0
+          curl -sSfL "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz" -o /tmp/zig.tar.xz
+          mkdir -p /opt/zig
+          tar -xJf /tmp/zig.tar.xz -C /opt/zig --strip-components=1
+          echo "/opt/zig" >> "$GITHUB_PATH"
+      - name: Install cargo-zigbuild (musl release build)
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-zigbuild
       - name: Release build
         working-directory: Payload_Type/linky/agent_code
         env:
@@ -157,7 +173,12 @@ jobs:
           IMPLANT_SECRET: x
           PAYLOAD_UUID: x
           CALLBACK_URI: /
-        run: cargo build --release --target ${{ matrix.target }}
+        run: |
+          if [ "${{ matrix.target }}" = "x86_64-unknown-linux-musl" ]; then
+            cargo zigbuild --release --target ${{ matrix.target }}
+          else
+            cargo build --release --target ${{ matrix.target }}
+          fi
       - name: Upload implant artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -187,7 +208,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
+          go-version: "1.27"
       - name: Audit Go dependencies (govulncheck)
         working-directory: Payload_Type/linky
         run: |
@@ -206,7 +227,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
+          go-version: "1.27"
 
       - name: Download Go modules
         working-directory: Payload_Type/linky
