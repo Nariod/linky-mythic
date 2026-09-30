@@ -12,6 +12,7 @@ on:
       - 'Payload_Type/linky/mythic/**'
       - 'Payload_Type/linky/main.go'
       - 'Payload_Type/linky/go.mod'
+      - 'config.json'
       - 'tests/integration_mythic.sh'
       - '.github/workflows/integration.yml'
 
