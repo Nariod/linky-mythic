@@ -64,11 +64,25 @@ func payloadDefinition() agentstructs.PayloadType {
 			},
 			{
 				Name:          "architecture",
-				Description:   "Target architecture (macOS: x86_64 or aarch64/arm64)",
+				Description:   "Target architecture (macOS: x86_64 or aarch64/arm64; Linux: x86_64 or aarch64/arm64)",
 				Required:      false,
 				ParameterType: agentstructs.BUILD_PARAMETER_TYPE_CHOOSE_ONE,
 				Choices:       []string{"x86_64", "aarch64", "arm64"},
 				DefaultValue:  "x86_64",
+			},
+			{
+				Name:          "user_agent",
+				Description:   "Custom User-Agent header for C2 traffic (empty = built-in obfuscated default)",
+				Required:      false,
+				ParameterType: agentstructs.BUILD_PARAMETER_TYPE_STRING,
+				DefaultValue:  "",
+			},
+			{
+				Name:          "commands",
+				Description:   "Commands to compile into the implant (empty = all). Disabling a command removes its code from the binary.",
+				Required:      false,
+				ParameterType: agentstructs.BUILD_PARAMETER_TYPE_ARRAY,
+				DefaultValue:  []string{},
 			},
 		},
 	}

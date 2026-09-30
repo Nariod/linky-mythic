@@ -39,6 +39,7 @@ jobs:
       matrix:
         target:
           - x86_64-unknown-linux-gnu
+          - aarch64-unknown-linux-musl
           - x86_64-pc-windows-gnu
           - x86_64-apple-darwin
     steps:
@@ -93,6 +94,39 @@ jobs:
           else
             cargo check --target ${{ matrix.target }}
           fi
+
+  rust-feature-matrix:
+    name: Rust conditional-compilation matrix
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+      - name: Check every platform with all commands disabled
+        working-directory: Payload_Type/linky/agent_code
+        env:
+          CALLBACK: x
+          IMPLANT_SECRET: x
+          PAYLOAD_UUID: x
+          CALLBACK_URI: /
+        run: |
+          cargo check -p link-linux --no-default-features
+          cargo check -p link-osx --no-default-features
+          cargo check -p link-windows --no-default-features
+      - name: Check minimal command subsets
+        working-directory: Payload_Type/linky/agent_code
+        env:
+          CALLBACK: x
+          IMPLANT_SECRET: x
+          PAYLOAD_UUID: x
+          CALLBACK_URI: /
+        run: |
+          cargo check -p link-linux --no-default-features --features cmd-whoami
+          cargo check -p link-windows --no-default-features --features cmd-amsi-etw,cmd-inject
+          cargo check -p link-windows --no-default-features --features cmd-download,cmd-upload
 
   go-build:
     name: Go build check

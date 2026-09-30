@@ -48,7 +48,7 @@ pub fn dispatch_common(command: &str, parameters: &str) -> Option<crate::Command
         "mv" => move_path(parameters).into(),
         "rm" => remove_path(parameters).into(),
         "mkdir" => make_dir(parameters).into(),
-        "execute" => execute_cmd(parameters).into(),
+        "execute" if cfg!(feature = "cmd-execute") => execute_cmd(parameters).into(),
         _ => return None,
     };
     Some(output)

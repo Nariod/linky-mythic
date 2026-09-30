@@ -3,6 +3,16 @@ name = "link-common"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+# Conditional command compilation (P5). The platform binary crates forward
+# their cmd-execute/cmd-download/cmd-upload features to this crate so the
+# corresponding code paths are eliminated when a command is disabled.
+# No defaults here: a platform build with --no-default-features only pulls in
+# the command code forwarded by the enabled platform features.
+cmd-execute = []
+cmd-download = []
+cmd-upload = []
+
 [dependencies]
 ureq       = { version = "3", default-features = false, features = ["rustls"] }
 serde      = { version = "1", features = ["derive"] }
