@@ -39,6 +39,7 @@ jobs:
       matrix:
         target:
           - x86_64-unknown-linux-gnu
+          - aarch64-unknown-linux-musl
           - x86_64-pc-windows-gnu
           - x86_64-apple-darwin
     steps:
@@ -55,12 +56,12 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64
 
       # `ring` (pulled in by ureq+rustls) cannot build for x86_64-apple-darwin
-      # on a Linux runner: its build script emits macOS-only cc flags
+      # or aarch64-unknown-linux-musl on a Linux runner: its build script emits macOS-only cc flags
       # (-arch, -mmacosx-version-min) that no Linux toolchain understands.
       # cargo-zigbuild routes C compilation through `zig cc`, which knows how to
-      # target darwin from Linux. See ring issue #1442.
+      # target darwin and musl from Linux. See ring issue #1442.
       - name: Install zig (macOS cross-compile)
-        if: matrix.target == 'x86_64-apple-darwin'
+        if: matrix.target == 'x86_64-apple-darwin' || matrix.target == 'aarch64-unknown-linux-musl'
         run: |
           # mlugg/setup-zig@v1 fetches from ziglang.org/builds (dev builds only)
           # and 404s; install a stable release tarball directly instead.
@@ -72,7 +73,7 @@ jobs:
           echo "/opt/zig" >> "$GITHUB_PATH"
 
       - name: Install cargo-zigbuild (macOS cross-compile)
-        if: matrix.target == 'x86_64-apple-darwin'
+        if: matrix.target == 'x86_64-apple-darwin' || matrix.target == 'aarch64-unknown-linux-musl'
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-zigbuild
@@ -88,11 +89,44 @@ jobs:
         # Note: recent cargo-zigbuild releases dropped the `--check` flag, so we run
         # a full zigbuild (debug profile) to validate compilation.
         run: |
-          if [ "${{ matrix.target }}" = "x86_64-apple-darwin" ]; then
+          if [ "${{ matrix.target }}" = "x86_64-apple-darwin" ] || [ "${{ matrix.target }}" = "aarch64-unknown-linux-musl" ]; then
             cargo zigbuild --target ${{ matrix.target }}
           else
             cargo check --target ${{ matrix.target }}
           fi
+
+  rust-feature-matrix:
+    name: Rust conditional-compilation matrix
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+      - name: Check every platform with all commands disabled
+        working-directory: Payload_Type/linky/agent_code
+        env:
+          CALLBACK: x
+          IMPLANT_SECRET: x
+          PAYLOAD_UUID: x
+          CALLBACK_URI: /
+        run: |
+          cargo check -p link-linux --no-default-features
+          cargo check -p link-osx --no-default-features
+          cargo check -p link-windows --no-default-features
+      - name: Check minimal command subsets
+        working-directory: Payload_Type/linky/agent_code
+        env:
+          CALLBACK: x
+          IMPLANT_SECRET: x
+          PAYLOAD_UUID: x
+          CALLBACK_URI: /
+        run: |
+          cargo check -p link-linux --no-default-features --features cmd-whoami
+          cargo check -p link-windows --no-default-features --features cmd-amsi-etw,cmd-inject
+          cargo check -p link-windows --no-default-features --features cmd-download,cmd-upload
 
   go-build:
     name: Go build check

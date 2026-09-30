@@ -348,14 +348,6 @@ Without this, `cargo build` inside the container will fail with permission error
 
 ### Running outside Docker (local development)
 
-```bash
-AGENT_CODE_DIR=/path/to/linky-mythic/Payload_Type/linky/agent_code \
-RABBITMQ_HOST=127.0.0.1 \
-RABBITMQ_PASSWORD=<from Mythic .env> \
-MYTHIC_SERVER_HOST=127.0.0.1 \
-./linky-container
-```
-
 The builder falls back to `/Mythic/agent_code` when `AGENT_CODE_DIR` is not set (the default path inside the Docker container).
 
 ---
@@ -364,8 +356,6 @@ The builder falls back to `/Mythic/agent_code` when `AGENT_CODE_DIR` is not set 
 
 ```text
 linky-mythic/
-├── config.json                             # Mythic payload type configuration
-├── agent_capabilities.json                 # Capability summary
 ├── Payload_Type/
 │   └── linky/
 │       ├── Dockerfile                      # Multi-stage: Go builder + Rust toolchain
@@ -444,10 +434,12 @@ See [TODO.md](TODO.md) for the detailed phase-by-phase plan.
 - ~~Pin Rust version in Dockerfile for reproducible builds (GO-07)~~ ✅
 
 ### Near-term (features)
-- Mythic `process_browser` and `file_browser` structured JSON output
-- Configurable User-Agent via build parameter
+- ~~Mythic `process_browser` and `file_browser` structured JSON output~~ ✅
+- ~~Configurable User-Agent via build parameter~~ ✅ (`user_agent` build parameter)
 - `ipinfo` command (network interface info)
-- Conditional command compilation via Cargo features (operator picks commands at build time)
+- ~~Conditional command compilation via Cargo features (operator picks commands at build time)~~ ✅ (`commands` build parameter + `cmd-*` Cargo features)
+- ~~AMSI/ETW bypass (Windows)~~ ✅ (`amsi_etw` command: in-memory patch of `AmsiScanBuffer` + `EtwEventWrite`)
+- ~~ARM64 targets~~ ✅ (`aarch64-unknown-linux-musl`, `aarch64-apple-darwin` in the builder and Dockerfile)
 
 ### Medium-term
 - Sleep obfuscation research (Windows — Ekko-style)
@@ -457,5 +449,4 @@ See [TODO.md](TODO.md) for the detailed phase-by-phase plan.
 ### Long-term
 - Dynamic module loading (Rust equivalent of Hannibal's HBIN)
 - SOCKS proxy for network pivoting
-- AMSI/ETW bypass (Windows)
 - Hugo documentation site

