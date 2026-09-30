@@ -2,6 +2,8 @@
 
 A Mythic payload type providing Rust-native implants for Linux, Windows, and macOS.
 
+> **Built around BOFs** — a thin, auditable implant whose post-exploitation capabilities come from operator-supplied Beacon Object Files, not from an ever-growing binary.
+
 > **Linky reimagined as a Mythic agent** — same Rust implants, Mythic handles GUI / backend / DB.
 >
 > **AI-assisted project notice** — this repository was written with the help of AI. Treat the code, documentation, and operational behavior with caution, and review everything carefully before building, deploying, or using it in a real environment.
@@ -14,8 +16,6 @@ A Mythic payload type providing Rust-native implants for Linux, Windows, and mac
 
 `linky-mythic` is a **Mythic payload type**. It installs into an existing Mythic instance and adds the ability to build and control Rust implants across multiple platforms.
 
-**Design direction: thin implant + BOFs.** The implant keeps a small, auditable core (transport, crypto, dispatch, file transfer). Post-exploitation capability is meant to come from operator-supplied **Beacon Object Files** (Cobalt Strike-compatible COFF objects), loaded and executed in memory via the `bof` command. This keeps the binary small, its detection surface minimal, and its capability set unlimited: every BOF from the existing ecosystem (e.g. [CS-Situational-Awareness-BOF](https://github.com/trustedsec/CS-Situational-Awareness-BOF)) works without recompiling the implant.
-
 This repository does **not** provide:
 
 - a standalone C2 server
@@ -24,6 +24,38 @@ This repository does **not** provide:
 - a replacement for Mythic itself
 
 Those pieces are provided by **Mythic**. This project provides the payload type container and the implant code.
+
+## Philosophy: a thin implant, extended by BOFs
+
+linky's design principle is that an implant should stay **small, auditable, and stable** — and that post-exploitation capability belongs to the operator, not the binary.
+
+- The **core** is deliberately minimal: transport, Mythic crypto, task dispatch, file transfer. Every command is a Cargo feature that can be compiled out.
+- Capability comes from **Beacon Object Files** (BOFs) — Cobalt Strike-compatible COFF objects loaded and executed in memory via the `bof` command. Nothing touches disk.
+- Because linky speaks the **standard BOF ABI** (`go` entrypoint, `BeaconOutput`/`BeaconPrintf`/`BeaconDataParse`, CS argument format), the entire existing BOF ecosystem works out of the box: [CS-Situational-Awareness-BOF](https://github.com/trustedsec/CS-Situational-Awareness-BOF), [CS-Remote-OPs-BOF](https://github.com/trustedsec/CS-Remote-OPs-BOF), and every other CS-compatible BOF — no recompilation, no adapter, no fork.
+- Operators compose their toolkit freely: the implant ships once, capabilities change per-mission by picking which BOFs to task.
+
+See [Extending linky with BOFs](#extending-linky-with-bofs) for usage, and the roadmap for what's next (Linux/macOS BOF support, loader OPSEC hardening).
+
+## Extending linky with BOFs
+
+This is the heart of the project: every post-exploitation capability you task comes from a BOF you choose — linky only provides the minimal, in-memory loader.
+
+```text
+bof <file.x64.o> [entrypoint] [args]
+```
+
+Example — enumerate a directory with a CS-Situational-Awareness BOF (`dir` from the file store, default `go` entrypoint, a wide-string argument):
+
+```text
+bof dir.x64.o go wstr:"C:\\Windows\\System32"
+```
+
+- The COFF object is fetched from the Mythic file store **in memory** (chunked transfer, no disk write) and executed by a vendored [coffee](https://github.com/Nariod/coffee) loader (fork of hakaioffsec/coffee, GPL-3.0, in `agent_code/links/coffee-ldr/`).
+- Compatible with Cobalt Strike BOFs: `go` entrypoint, `BeaconOutput`/`BeaconPrintf`/`BeaconDataParse`/... support, CS argument blob format. Arguments use the `bof_pack` format: `int:<n>` `short:<n>` `str:<s>` `wstr:<s>` `bin:<base64>`.
+- The standard BOF ABI means the whole ecosystem works as-is: [CS-Situational-Awareness-BOF](https://github.com/trustedsec/CS-Situational-Awareness-BOF), [CS-Remote-OPs-BOF](https://github.com/trustedsec/CS-Remote-OPs-BOF), and any other CS-compatible BOF — no recompilation, no adapter, no fork.
+- Requires the Rust **nightly** toolchain at build time (the vendored loader uses `core_intrinsics`). The Mythic builder switches to `cargo +nightly` automatically when `bof` is in the selected commands.
+- Gated behind the `cmd-bof` Cargo feature (default on). `--no-default-features --features cmd-bof` produces a minimal BOF-only implant.
+- Linux/macOS implants accept the task but report that the BOF runtime is not compiled in (the BOF ecosystem is Windows-centric; ELF-object support may come later).
 
 Quick install (Mythic 4.0 — recommended):
 
@@ -242,19 +274,7 @@ See [TODO.md](TODO.md) Phase 17 for the complete audit report.
 | integrity | Query process integrity level (Low/Medium/High/System) |
 | cmd | Execute via `cmd.exe /C` |
 | powershell | Execute via `powershell.exe -noP -sta -w 1 -c` |
-| bof | Load and execute a Beacon Object File (COFF) in memory. Args use the `bof_pack` format: `int:<n>` `short:<n>` `str:<s>` `wstr:<s>` `bin:<base64>` |
-
-### BOF command
-
-```text
-bof <file.x64.o> [entrypoint] [args]
-```
-
-- The COFF object is fetched from the Mythic file store in memory (chunked transfer, no disk write) and executed by a vendored [coffee](https://github.com/Nariod/coffee) loader (fork of hakaioffsec/coffee, GPL-3.0, in `agent_code/links/coffee-ldr/`).
-- Compatible with Cobalt Strike BOFs: `go` entrypoint, `BeaconOutput`/`BeaconPrintf`/`BeaconDataParse`/... support, CS argument blob format.
-- Requires the Rust **nightly** toolchain at build time (the vendored loader uses `core_intrinsics`). The Mythic builder switches to `cargo +nightly` automatically when `bof` is in the selected commands.
-- Gated behind the `cmd-bof` Cargo feature (default on). `--no-default-features --features cmd-bof` produces a minimal BOF-only implant.
-- Linux/macOS implants accept the task but report that the BOF runtime is not compiled in (the BOF ecosystem is Windows-centric; ELF-object support may come later).
+| bof | Load and execute a Beacon Object File (COFF) in memory. Args use the `bof_pack` format: `int:<n>` `short:<n>` `str:<s>` `wstr:<s>` `bin:<base64>`. See [Extending linky with BOFs](#extending-linky-with-bofs) |
 
 ---
 
@@ -268,7 +288,7 @@ bof <file.x64.o> [entrypoint] [args]
 │                             │     │                              │
 │  Web UI                     │     │  Go payload type service     │
 │  PostgreSQL                 │◄───►│  ├── builder.go (cargo build)│
-│  RabbitMQ                   │     │  └── 21 command definitions  │
+│  RabbitMQ                   │     │  └── 22 command definitions │
 │  HTTP C2 profile (TLS)      │     │                              │
 │  GraphQL / WebSocket        │     │  Rust implant workspace      │
 │                             │     │  ├── common/ (protocol, C2)  │
@@ -316,7 +336,7 @@ Competitive reference: [silentwarble/Hannibal](https://github.com/silentwarble/H
 | Sleep obfuscation | Ekko (RC4 .text encryption) | Not yet |
 | Indirect syscalls | N/A (no inject) | ✅ Optional ([syscalls-rs](https://github.com/Nariod/syscalls-rs)) |
 | String obfuscation | Hash compile-time (ROL5) | `obfstr` compile-time encryption + FNV-1a command dispatch |
-| Post-exploitation | HBIN dynamic modules | Not yet |
+| Post-exploitation | HBIN dynamic modules | ✅ BOFs (CS-compatible COFFs, in-memory) |
 | Memory safety | Manual (C) | Compiler-enforced (Rust) |
 | Unit tests | None | 61 tests (Rust) + Go build/vet in CI |
 
@@ -380,7 +400,7 @@ linky-mythic/
 │       ├── mythic/
 │       │   └── agent_functions/
 │       │       ├── builder.go              # Build orchestration + AES callback encryption
-│       │       ├── shell.go ... exit.go    # 21 command definitions (Go ↔ Mythic)
+│       │       ├── shell.go ... exit.go    # 22 command definitions (Go ↔ Mythic)
 │       │       └── utils.go               # Shared helpers (splitArgs)
 │       └── agent_code/                     # Rust workspace
 │           ├── Cargo.toml                  # Workspace: release profile (LTO, strip, opt-z)
@@ -436,6 +456,8 @@ cargo fmt --check
 | Sleep obfuscation (Windows) | ⬜ Research (roadmap M1) |
 | AMSI/ETW bypass (Windows) | ✅ Done (`amsi_etw` command) |
 | Conditional command compilation (Cargo features) | ✅ Done (`commands` build parameter + `cmd-*` features) |
+| BOF execution without disk writes | ✅ Done (COFF fetched in memory, loader in process) |
+| Loader allocation RWX→RX / module stomping | ⬜ Roadmap (M7) |
 
 ---
 
