@@ -123,7 +123,7 @@
 | Commandes supportées | 25+ | ✅ 21 |
 | Plateformes | 3/3 (Linux/Win/macOS) | ⚠️ 2/3 (macOS en cours) |
 | Tests unitaires | 100% couverture | ✅ 9/9 |
-| Tests d'intégration | CI automatisée | ⚠️ Partiel (Phase 15) |
+| Tests d'intégration | CI automatisée | ✅ Phase 15 (`integration.yml` : Mythic end-to-end) |
 | OPSEC Score | 10/10 | ⚠️ 7/10 (Sleep Obfuscation manquant) |
 
 ---
