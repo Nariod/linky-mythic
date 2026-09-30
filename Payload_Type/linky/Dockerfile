@@ -31,8 +31,8 @@ RUN mkdir -p /opt/osxcross && \
     git clone --depth 1 https://github.com/tpoechtrager/osxcross /opt/osxcross && \
     cd /opt/osxcross && \
     mkdir -p tarballs && \
-    (curl -fL -o tarballs/MacOSX13.1.sdk.tar.xz https://github.com/tpoechtrager/osxcross-sdk/releases/latest/download/MacOSX13.1.sdk.tar.xz || \
-     curl -fL -o tarballs/MacOSX13.1.sdk.tar.xz https://github.com/robherrmann/osx-sdk/releases/download/v1.0/MacOSX13.1.sdk.tar.xz) && \
+    (curl -fL -o tarballs/MacOSX13.1.sdk.tar.xz https://github.com/joseluisq/macosx-sdks/releases/download/13.1/MacOSX13.1.sdk.tar.xz || \
+     curl -fL -o tarballs/MacOSX13.1.sdk.tar.xz https://github.com/tpoechtrager/osxcross-sdk/releases/latest/download/MacOSX13.1.sdk.tar.xz) && \
     UNATTENDED=1 OSX_VERSION_MIN=10.7 SDK_VERSION=13.1 ./build.sh
 
 # Add osxcross to PATH
