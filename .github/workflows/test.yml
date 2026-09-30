@@ -62,6 +62,10 @@ jobs:
       - name: Install zig (macOS cross-compile)
         if: matrix.target == 'x86_64-apple-darwin'
         uses: mlugg/setup-zig@v1
+        with:
+          # Pin explicitly: the action's default "latest" resolution fails when
+          # the mirrors 404 for newly published builds (seen with ziglang.org).
+          version: 0.16.0
 
       - name: Install cargo-zigbuild (macOS cross-compile)
         if: matrix.target == 'x86_64-apple-darwin'
