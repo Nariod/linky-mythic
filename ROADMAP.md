@@ -44,7 +44,7 @@
 | **9** | Process/File Browser (JSON structuré) | ✅ | Intégration Mythic UI |
 | **10** | Commandes manquantes (cp, mv, rm, mkdir, execute) | ✅ | Parité avec Hannibal |
 | **11** | Réduction taille binaire (reqwest → ureq) | ✅ | **1.9 MB** (vs 4.5 MB) |
-| **12** | OPSEC hardening (obfstr, debuginfo=0) | ✅ | Strings sensibles obfusquées |
+| **12** | OPSEC hardening (obfstr, debuginfo=0, dispatch par hash FNV-1a) | ✅ | Vocabulaire de commandes absent du binaire (`strings` clean) |
 
 ### 🧪 Validation (Phases 13-17)
 
