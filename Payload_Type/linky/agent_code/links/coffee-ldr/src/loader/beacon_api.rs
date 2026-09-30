@@ -204,7 +204,11 @@ impl Carrier {
             .iter()
             .map(|c| {
                 let b = *c as u8;
-                if b == 0 { b'\n' } else { b }
+                if b == 0 {
+                    b'\n'
+                } else {
+                    b
+                }
             })
             .collect();
 

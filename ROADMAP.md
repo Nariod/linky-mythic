@@ -1,6 +1,7 @@
 # linky-mythic - Feuille de Route
 
-> **Mythic Payload Type en Rust** - Implants natifs pour Linux, Windows et macOS
+> **Mythic Payload Type en Rust** — Implants natifs pour Linux, Windows et macOS
+> **Direction** : thin implant — le cœur reste minimal, les capacités post-exploitation viennent des BOFs fournis par les opérateurs (commande `bof`, loader coffee-ldr vendored)
 > **Statut actuel**: Beta (Live-tested — Mythic 3.4 live + migration Mythic 4.0)
 > **Dernière mise à jour**: Juillet 2026
 
@@ -18,6 +19,7 @@
 | Callback live vérifié | Linux + Windows | ✅ |
 | Crypto | AES-256-CBC + HMAC-SHA256 | ✅ |
 | OPSEC | obfstr, zeroize, strip, LTO, dispatch FNV-1a | ✅ |
+| BOF (COFF loader) | `bof` (Windows, coffee-ldr vendored) | ✅ code |
 
 ---
 
@@ -73,8 +75,9 @@
 
 | ID | Tâche | Description | Impact | Statut |
 |----|-------|-------------|--------|--------|
+| **M0** | BOF Execution (Windows) | Commande `bof` : fetch COFF depuis le file-store Mythic (sans écriture disque) + exécution in-memory via coffee-ldr vendored (fork Nariod/coffee), args `bof_pack` compat CS | 🔌 Thin implant | ✅ Code (live test à faire) |
 | **M1** | Sleep Obfuscation (Windows) | Implémenter Ekko-style (RC4 `.text` encryption) ou Foliage (APC-based) | 🛡️ OPSEC | ⏳ À faire |
-| **M2** | Dynamic Module Loading | Équivalent HBIN (chargement de modules Rust `.so`/`.dll`) | 🔌 Extensibilité | ⏳ À faire |
+| **M2** | ~~Dynamic Module Loading~~ | Remplacé par **M0 (BOF)** — le chargement de modules est couvert par l'écosystème BOF, plus standard et plus auditable | 🔌 Extensibilité | 🚫 Remplacé |
 | **M3** | SOCKS Proxy | Pivoting réseau via Mythic | 🌐 Post-exploitation | ⏳ À faire |
 | **M4** | Process Browser Structuré | Sortie JSON pour `ps` (intégration Mythic UI) | 📊 UX | ✅ Terminé (Phase 9) |
 | **M5** | File Browser Structuré | Sortie JSON pour `ls` (métadonnées fichiers) | 📁 UX | ✅ Terminé (Phase 9) |
@@ -84,6 +87,7 @@
 
 | ID | Tâche | Description | Impact | Statut |
 |----|-------|-------------|--------|--------|
+| **L0** | BOF Linux/macOS | Objets ELF relogeables (approche bof-launcher) pour étendre le modèle BOF au-delà de Windows | 🔌 Thin implant | ⏳ À faire |
 | **L1** | Hugo Documentation | Site de doc Mythic-compatible | 📖 Maintenance | ⏳ À faire |
 | **L2** | Keylogging (Linux/Windows) | Capture des entrées clavier | 🎹 Post-exploitation | ⏳ À faire |
 | **L3** | Credential Access | Dump de mots de passe (Mimikatz-like) | 🔑 Post-exploitation | ⏳ À faire |

