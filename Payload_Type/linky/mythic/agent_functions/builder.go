@@ -103,29 +103,33 @@ func Build(ctx context.Context, input agentstructs.PayloadBuildMessage) agentstr
 		target    string
 		binName   string
 		outputExt string
+		buildArch agentstructs.PayloadBuildArchitecture
 	)
-
 	switch targetOS {
 	case "linux":
 		crateDir = filepath.Join(agentDir, "links/linux")
 		target = "x86_64-unknown-linux-musl"
 		binName = "link-linux"
 		outputExt = ""
+		buildArch = agentstructs.PAYLOAD_BUILD_ARCHITECTURE_X64
 	case "windows":
 		crateDir = filepath.Join(agentDir, "links/windows")
 		target = "x86_64-pc-windows-gnu"
 		binName = "link-windows"
 		outputExt = ".exe"
+		buildArch = agentstructs.PAYLOAD_BUILD_ARCHITECTURE_X64
 	case "macos":
 		crateDir = filepath.Join(agentDir, "links/osx")
 		// Check if we're building for ARM64 macOS
-		arch, _ := input.BuildParameters.GetStringArg("architecture")
-		if arch == "aarch64" || arch == "arm64" {
+		archParam, _ := input.BuildParameters.GetStringArg("architecture")
+		if archParam == "aarch64" || archParam == "arm64" {
 			target = "aarch64-apple-darwin"
 			binName = "link-osx-arm64"
+			buildArch = agentstructs.PAYLOAD_BUILD_ARCHITECTURE_ARM64
 		} else {
 			target = "x86_64-apple-darwin"
 			binName = "link-osx"
+			buildArch = agentstructs.PAYLOAD_BUILD_ARCHITECTURE_X64
 		}
 		outputExt = ""
 	default:
@@ -196,6 +200,16 @@ func Build(ctx context.Context, input agentstructs.PayloadBuildMessage) agentstr
 
 	resp.Payload = &data
 	resp.Success = true
+	// Mythic 4.0: builders report architecture and output format so wrapper
+	// payload types can match on exact build metadata (Mythic records the OS itself).
+	buildFormat := agentstructs.PAYLOAD_BUILD_FORMAT_EXE
+	if shellcode && (targetOS == "linux" || targetOS == "macos") {
+		buildFormat = agentstructs.PAYLOAD_BUILD_FORMAT_SHELLCODE
+	}
+	resp.BuildMetadata = &agentstructs.PayloadBuildMetadata{
+		Architecture: buildArch,
+		Format:       buildFormat,
+	}
 	resp.BuildMessage = fmt.Sprintf("linky built for %s (%d bytes)", targetOS, len(data))
 	return resp
 }

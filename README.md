@@ -33,7 +33,13 @@ sudo ./mythic-cli install github https://github.com/Nariod/linky-mythic
 
 ## Current status
 
-**Beta — live-tested.** The codebase has been **validated against a live Mythic v3.4.0.52 instance** with real implant callbacks (April 2026):
+**Beta — live-tested.** The codebase has been **validated against a live Mythic v3.4.0.52 instance** with real implant callbacks (April 2026), and carries the **Mythic 4.0 payload-type migration** (branch `Mythic-v4.0.0`):
+
+- ✅ Mythic 4.0 container library: `MythicContainer v1.7.0-rc5` (v4-compatible, per the official 3.4 → 4.0 migration guide)
+- ✅ Process browser uses the Mythic 4.0 envelope format (`host` / `os` / `update_deleted` lifted out of per-process entries)
+- ✅ Build responses report `build_metadata` (`architecture`: x64/arm64, `format`: exe/shellcode) so wrapper payload types can match on exact build combinations
+- ✅ Removed the `CanBeWrappedByTheFollowingPayloadTypes` field (replaced in Mythic 4.0 by `wrapper_payload_requirements`; linky is not a wrapper)
+- ✅ Task/callback parsing uses container-library RPC only — no dependency on removed `/api/v1.4` routes, snake_case Hasura actions, or cookie-based auth
 
 - ✅ Payload type registers and syncs with Mythic via RabbitMQ
 - ✅ HTTP C2 profile integration (HTTPS recommended, HTTP supported)
