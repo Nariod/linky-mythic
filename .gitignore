@@ -18,8 +18,7 @@ link-osx
 # Mythic runtime files
 .env
 InstalledServices/
-rabbitmq_config.json
-
+rabbitmq_
 # IDE
 .idea/
 .vscode/
@@ -34,6 +33,4 @@ Thumbs.dblinky-container
 
 # Local container binary / dumps / agent tooling configs
 linky-container
-agent_capabilities.json
-config.json
 .claude/
