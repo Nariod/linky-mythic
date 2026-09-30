@@ -1,0 +1,8 @@
+{
+  "remote_images": {},
+  "license": "BSD3",
+  "name": "linky",
+  "description": "Rust-native C2 agent for Linux, Windows, and macOS",
+  "payload_types": ["linky"],
+  "c2_profiles": []
+}
