@@ -1,6 +1,7 @@
 package agent_functions
 
 import (
+	"context"
 	"encoding/json"
 
 	agentstructs "github.com/MythicMeta/MythicContainer/agent_structs"
@@ -29,14 +30,14 @@ func registerUpload() {
 				},
 			},
 		},
-		TaskFunctionParseArgString: func(args *agentstructs.PTTaskMessageArgsData, input string) error {
+		TaskFunctionParseArgString: func(ctx context.Context, args *agentstructs.PTTaskMessageArgsData, input string) error {
 			var jsonArgs map[string]interface{}
 			if err := json.Unmarshal([]byte(input), &jsonArgs); err == nil {
 				return args.LoadArgsFromJSONString(input)
 			}
 			return args.SetArgValue("remote_path", input)
 		},
-		TaskFunctionCreateTasking: func(taskData *agentstructs.PTTaskMessageAllData) agentstructs.PTTaskCreateTaskingMessageResponse {
+		TaskFunctionCreateTasking: func(ctx context.Context, taskData *agentstructs.PTTaskMessageAllData) agentstructs.PTTaskCreateTaskingMessageResponse {
 			resp := agentstructs.PTTaskCreateTaskingMessageResponse{TaskID: taskData.Task.ID, Success: true}
 			remotePath, _ := taskData.Args.GetStringArg("remote_path")
 			resp.DisplayParams = &remotePath

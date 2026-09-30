@@ -1,13 +1,16 @@
 package agent_functions
 
-import agentstructs "github.com/MythicMeta/MythicContainer/agent_structs"
+import (
+	"context"
+	agentstructs "github.com/MythicMeta/MythicContainer/agent_structs"
+)
 
 func registerPs() {
 	agentstructs.AllPayloadData.Get("linky").AddCommand(agentstructs.Command{
 		Name: "ps", Description: "List running processes (populates Mythic process browser)", HelpString: "ps", Version: 1,
-		MitreAttackMappings:    []string{"T1057"},
-		SupportedUIFeatures:    []string{"process_browser:list"},
-		CommandAttributes:      agentstructs.CommandAttribute{SupportedOS: []string{agentstructs.SUPPORTED_OS_LINUX, agentstructs.SUPPORTED_OS_WINDOWS, agentstructs.SUPPORTED_OS_MACOS}},
+		MitreAttackMappings: []string{"T1057"},
+		SupportedUIFeatures: []string{"process_browser:list"},
+		CommandAttributes:   agentstructs.CommandAttribute{SupportedOS: []string{agentstructs.SUPPORTED_OS_LINUX, agentstructs.SUPPORTED_OS_WINDOWS, agentstructs.SUPPORTED_OS_MACOS}},
 		AssociatedBrowserScript: &agentstructs.BrowserScript{
 			Author: "@Nariod",
 			ScriptContents: `
@@ -40,7 +43,7 @@ function(task, responses) {
     ], rows: rows}]};
 }`,
 		},
-		TaskFunctionCreateTasking: func(taskData *agentstructs.PTTaskMessageAllData) agentstructs.PTTaskCreateTaskingMessageResponse {
+		TaskFunctionCreateTasking: func(ctx context.Context, taskData *agentstructs.PTTaskMessageAllData) agentstructs.PTTaskCreateTaskingMessageResponse {
 			return agentstructs.PTTaskCreateTaskingMessageResponse{TaskID: taskData.Task.ID, Success: true}
 		},
 	})

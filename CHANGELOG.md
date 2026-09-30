@@ -20,7 +20,7 @@
 ## [0.2.0] – 2026-04-15 (Beta - Live Tested)
 
 ### ✅ Fonctionnalités
-- **21/21 commandes validées** en live contre Mythic v3.4.32
+- **21/21 commandes validées** en live contre Mythic v3.4.0.52
   - Commandes cross-platform: `whoami`, `pwd`, `pid`, `info`, `ls`, `cd`, `shell`, `ps`, `netstat`, `sleep`, `killdate`, `download`, `upload`, `cp`, `mv`, `rm`, `mkdir`, `execute`, `exit`
   - Commandes Windows: `inject`, `integrity`, `cmd`, `powershell`
 - **Indirect Syscalls** (Windows) via [syscalls-rs](https://github.com/Nariod/syscalls-rs)

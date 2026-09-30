@@ -1,0 +1,10 @@
+# macOS cross-compilation linkers (osxcross).
+# These live here, not in Cargo.toml: a virtual workspace manifest
+# cannot contain [target.*] tables (cargo rejects them).
+[target.x86_64-apple-darwin]
+linker = "x86_64-apple-darwin21.4-clang"
+rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+
+[target.aarch64-apple-darwin]
+linker = "aarch64-apple-darwin21.4-clang"
+rustflags = ["-C", "link-arg=-fuse-ld=lld"]

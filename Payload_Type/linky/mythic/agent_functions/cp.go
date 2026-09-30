@@ -1,6 +1,7 @@
 package agent_functions
 
 import (
+	"context"
 	"fmt"
 
 	agentstructs "github.com/MythicMeta/MythicContainer/agent_structs"
@@ -24,7 +25,7 @@ func registerCp() {
 				Description:               "Destination path",
 			},
 		},
-		TaskFunctionParseArgString: func(args *agentstructs.PTTaskMessageArgsData, input string) error {
+		TaskFunctionParseArgString: func(ctx context.Context, args *agentstructs.PTTaskMessageArgsData, input string) error {
 			parts := splitArgs(input, 2)
 			if len(parts) < 2 {
 				return fmt.Errorf("usage: cp <source> <destination>")
@@ -34,7 +35,7 @@ func registerCp() {
 			}
 			return args.SetArgValue("destination", parts[1])
 		},
-		TaskFunctionCreateTasking: func(taskData *agentstructs.PTTaskMessageAllData) agentstructs.PTTaskCreateTaskingMessageResponse {
+		TaskFunctionCreateTasking: func(ctx context.Context, taskData *agentstructs.PTTaskMessageAllData) agentstructs.PTTaskCreateTaskingMessageResponse {
 			return agentstructs.PTTaskCreateTaskingMessageResponse{TaskID: taskData.Task.ID, Success: true}
 		},
 	})

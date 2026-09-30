@@ -61,7 +61,15 @@ jobs:
       # target darwin from Linux. See ring issue #1442.
       - name: Install zig (macOS cross-compile)
         if: matrix.target == 'x86_64-apple-darwin'
-        uses: mlugg/setup-zig@v1
+        run: |
+          # mlugg/setup-zig@v1 fetches from ziglang.org/builds (dev builds only)
+          # and 404s; install a stable release tarball directly instead.
+          set -euo pipefail
+          ZIG_VERSION=0.16.0
+          curl -sSfL "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz" -o /tmp/zig.tar.xz
+          mkdir -p /opt/zig
+          tar -xJf /tmp/zig.tar.xz -C /opt/zig --strip-components=1
+          echo "/opt/zig" >> "$GITHUB_PATH"
 
       - name: Install cargo-zigbuild (macOS cross-compile)
         if: matrix.target == 'x86_64-apple-darwin'
@@ -77,9 +85,11 @@ jobs:
           PAYLOAD_UUID: x
           CALLBACK_URI: /
         # macOS target uses cargo-zigbuild so `ring`'s C sources compile via zig cc.
+        # Note: recent cargo-zigbuild releases dropped the `--check` flag, so we run
+        # a full zigbuild (debug profile) to validate compilation.
         run: |
           if [ "${{ matrix.target }}" = "x86_64-apple-darwin" ]; then
-            cargo zigbuild --check --target ${{ matrix.target }}
+            cargo zigbuild --target ${{ matrix.target }}
           else
             cargo check --target ${{ matrix.target }}
           fi

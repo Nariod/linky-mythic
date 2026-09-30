@@ -1,6 +1,9 @@
 package agent_functions
 
-import agentstructs "github.com/MythicMeta/MythicContainer/agent_structs"
+import (
+	"context"
+	agentstructs "github.com/MythicMeta/MythicContainer/agent_structs"
+)
 
 func registerCmd() {
 	agentstructs.AllPayloadData.Get("linky").AddCommand(agentstructs.Command{
@@ -15,21 +18,21 @@ func registerCmd() {
 		},
 		CommandParameters: []agentstructs.CommandParameter{
 			{
-				Name:             "command",
-				ModalDisplayName: "Command to execute",
-				CLIName:          "command",
-				ParameterType:    agentstructs.COMMAND_PARAMETER_TYPE_STRING,
-				Description:      "cmd.exe command to run",
+				Name:                      "command",
+				ModalDisplayName:          "Command to execute",
+				CLIName:                   "command",
+				ParameterType:             agentstructs.COMMAND_PARAMETER_TYPE_STRING,
+				Description:               "cmd.exe command to run",
 				ParameterGroupInformation: []agentstructs.ParameterGroupInfo{{ParameterIsRequired: true, GroupName: "Default"}},
 			},
 		},
-		TaskFunctionCreateTasking: func(taskData *agentstructs.PTTaskMessageAllData) agentstructs.PTTaskCreateTaskingMessageResponse {
+		TaskFunctionCreateTasking: func(ctx context.Context, taskData *agentstructs.PTTaskMessageAllData) agentstructs.PTTaskCreateTaskingMessageResponse {
 			resp := agentstructs.PTTaskCreateTaskingMessageResponse{TaskID: taskData.Task.ID, Success: true}
 			cmd, _ := taskData.Args.GetStringArg("command")
 			resp.DisplayParams = &cmd
 			return resp
 		},
-		TaskFunctionParseArgString: func(args *agentstructs.PTTaskMessageArgsData, input string) error {
+		TaskFunctionParseArgString: func(ctx context.Context, args *agentstructs.PTTaskMessageArgsData, input string) error {
 			return args.SetArgValue("command", input)
 		},
 	})

@@ -33,7 +33,13 @@ sudo ./mythic-cli install github https://github.com/Nariod/linky-mythic
 
 ## Current status
 
-**Beta — live-tested.** The codebase has been **validated against a live Mythic v3.4.32 instance** with real implant callbacks (April 2026):
+**Beta — live-tested.** The codebase has been **validated against a live Mythic v3.4.0.52 instance** with real implant callbacks (April 2026), and carries the **Mythic 4.0 payload-type migration** (branch `Mythic-v4.0.0`):
+
+- ✅ Mythic 4.0 container library: `MythicContainer v1.7.0-rc5` (v4-compatible, per the official 3.4 → 4.0 migration guide)
+- ✅ Process browser uses the Mythic 4.0 envelope format (`host` / `os` / `update_deleted` lifted out of per-process entries)
+- ✅ Build responses report `build_metadata` (`architecture`: x64/arm64, `format`: exe/shellcode) so wrapper payload types can match on exact build combinations
+- ✅ Removed the `CanBeWrappedByTheFollowingPayloadTypes` field (replaced in Mythic 4.0 by `wrapper_payload_requirements`; linky is not a wrapper)
+- ✅ Task/callback parsing uses container-library RPC only — no dependency on removed `/api/v1.4` routes, snake_case Hasura actions, or cookie-based auth
 
 - ✅ Payload type registers and syncs with Mythic via RabbitMQ
 - ✅ HTTP C2 profile integration (HTTPS recommended, HTTP supported)
@@ -56,7 +62,7 @@ sudo ./mythic-cli install github https://github.com/Nariod/linky-mythic
 |----------|---------|-------|
 | Linux x86_64 | ~1.9 MB | musl, static, stripped, LTO, `opt-level=z`, `panic=abort` |
 | Windows x86_64 | ~2 MB | mingw-w64, stripped |
-| macOS x86_64 | N/A | requires osxcross (not in Dockerfile yet) |
+| macOS x86_64 | N/A | requires osxcross (best-effort in Dockerfile, see Known limitations) |
 
 ### Live command test results (Linux — April 2026, Mythic v3.4.0.52)
 
@@ -82,7 +88,7 @@ sudo ./mythic-cli install github https://github.com/Nariod/linky-mythic
 | execute | ✅ | `/usr/bin/uname -a` → full kernel info |
 | exit | ✅ | clean agent termination |
 
-### Live command test results (Windows — April 2026, Mythic v3.4.32)
+### Live command test results (Windows — April 2026, Mythic v3.4.0.52)
 
 Both build variants tested: **standard** and **indirect syscalls**. All 21 commands pass identically on both.
 
@@ -284,7 +290,7 @@ Competitive reference: [silentwarble/Hannibal](https://github.com/silentwarble/H
 
 ## Known limitations
 
-- macOS cross-compilation requires osxcross (not included in Dockerfile).
+- macOS cross-compilation requires osxcross. The Dockerfile attempts to install it, but SDK download and osxcross build failures are silently ignored (`|| echo "Warning…"`), so a successfully built image does not guarantee working macOS builds. Verify with a test payload build after `mythic-cli install`.
 - No AMSI/ETW bypass yet (see roadmap).
 - `inject` uses Win32 APIs by default; enable `indirect-syscalls` feature for NT API path via syscalls-rs.
 - Binary size gap with pure-C agents like Hannibal (1.9 MB vs 25-45 KB).
@@ -427,7 +433,7 @@ See [TODO.md](TODO.md) for the detailed phase-by-phase plan.
 
 ### Medium-term
 - Sleep obfuscation research (Windows — Ekko-style)
-- Full macOS support with osxcross in Dockerfile
+- Verify macOS builds end-to-end (osxcross install in Dockerfile is best-effort; SDK download may fail)
 - ARM64 targets (`aarch64-unknown-linux-musl`, `aarch64-apple-darwin`)
 
 ### Long-term

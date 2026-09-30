@@ -1,6 +1,9 @@
 package agent_functions
 
-import agentstructs "github.com/MythicMeta/MythicContainer/agent_structs"
+import (
+	"context"
+	agentstructs "github.com/MythicMeta/MythicContainer/agent_structs"
+)
 
 func registerDownload() {
 	agentstructs.AllPayloadData.Get("linky").AddCommand(agentstructs.Command{
@@ -10,14 +13,14 @@ func registerDownload() {
 		CommandParameters: []agentstructs.CommandParameter{
 			{
 				Name: "path", CLIName: "path",
-				ParameterType: agentstructs.COMMAND_PARAMETER_TYPE_STRING,
+				ParameterType:             agentstructs.COMMAND_PARAMETER_TYPE_STRING,
 				ParameterGroupInformation: []agentstructs.ParameterGroupInfo{{ParameterIsRequired: true, GroupName: "Default"}},
 			},
 		},
-		TaskFunctionParseArgString: func(args *agentstructs.PTTaskMessageArgsData, input string) error {
+		TaskFunctionParseArgString: func(ctx context.Context, args *agentstructs.PTTaskMessageArgsData, input string) error {
 			return args.SetArgValue("path", input)
 		},
-		TaskFunctionCreateTasking: func(taskData *agentstructs.PTTaskMessageAllData) agentstructs.PTTaskCreateTaskingMessageResponse {
+		TaskFunctionCreateTasking: func(ctx context.Context, taskData *agentstructs.PTTaskMessageAllData) agentstructs.PTTaskCreateTaskingMessageResponse {
 			resp := agentstructs.PTTaskCreateTaskingMessageResponse{TaskID: taskData.Task.ID, Success: true}
 			path, _ := taskData.Args.GetStringArg("path")
 			resp.DisplayParams = &path
