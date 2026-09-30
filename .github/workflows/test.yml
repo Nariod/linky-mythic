@@ -85,9 +85,11 @@ jobs:
           PAYLOAD_UUID: x
           CALLBACK_URI: /
         # macOS target uses cargo-zigbuild so `ring`'s C sources compile via zig cc.
+        # Note: recent cargo-zigbuild releases dropped the `--check` flag, so we run
+        # a full zigbuild (debug profile) to validate compilation.
         run: |
           if [ "${{ matrix.target }}" = "x86_64-apple-darwin" ]; then
-            cargo zigbuild --check --target ${{ matrix.target }}
+            cargo zigbuild --target ${{ matrix.target }}
           else
             cargo check --target ${{ matrix.target }}
           fi
