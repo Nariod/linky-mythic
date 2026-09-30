@@ -47,12 +47,12 @@ pub fn link_loop() {
     );
 }
 
-#[cfg(feature = "cmd-bof")]
+#[cfg(all(feature = "cmd-bof", windows))]
 fn bof_exec(coff: &[u8], entrypoint: &str, args: &str) -> String {
     crate::bof::bof_exec(coff, entrypoint, args)
 }
 
-#[cfg(not(feature = "cmd-bof"))]
+#[cfg(not(all(feature = "cmd-bof", windows)))]
 fn bof_exec(_coff: &[u8], _entrypoint: &str, _args: &str) -> String {
     "[-] bof command not compiled into this payload".into()
 }

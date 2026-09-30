@@ -1,5 +1,5 @@
 mod amsi_etw;
-#[cfg(feature = "cmd-bof")]
+#[cfg(all(feature = "cmd-bof", windows))]
 mod bof;
 #[cfg(feature = "indirect-syscalls")]
 mod nt_inject;

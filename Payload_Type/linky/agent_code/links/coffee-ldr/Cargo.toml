@@ -12,6 +12,8 @@ byteorder = "1.5"
 widestring = "1.2"
 tracing = "0.1"
 goblin = { version = "0.10", features = ["alloc"] }
+
+[target.'cfg(windows)'.dependencies]
 windows = { version = "0.62", features = [
     "Win32_Foundation",
     "Win32_System_Memory",
@@ -30,4 +32,3 @@ windows-sys = { version = "0.61", features = [
     "Win32_Security",
     "Win32_System_Diagnostics_Debug",
 ] }
-
