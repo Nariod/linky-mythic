@@ -1,5 +1,7 @@
 # Procédure de test manuel — linky-mythic
 
+> **Version de référence** : cette procédure cible **Mythic 4.0** (branche `Mythic-v4.0.0`,  actuellement en RC). Les validations live historiques (Linux 16/16, Windows 21/21) ont été réalisées sur Mythic 3.4.0.52 ; une re-validation complète contre une instance 4.0 est requise avant toute utilisation opérationnelle.
+
 > **Objectif** : vérifier l'intégration et le fonctionnement de `linky-mythic` au sein d'un environnement Mythic-c2, générer des payloads, puis les exécuter localement (Linux) et sur une machine virtuelle Windows.
 >
 > **Cadre légal** : cette procédure est réservée aux tests, recherches et exercices de sécurité **explicitement autorisés**. Ne l'utilisez que sur des systèmes, réseaux et machines que vous contrôlez ou pour lesquels vous disposez d'une autorisation écrite. Toute utilisation abusive est interdite.
@@ -11,7 +13,7 @@
 | Élément | Valeur attendue |
 |---------|-----------------|
 | OS opérateur | Linux (Ubuntu/Debian recommandé) avec Docker + Docker Compose |
-| Mythic | v3.4.x (testé v3.4.32) |
+| Mythic serveur | **branche `Mythic-v4.0.0`** (v4.0.0rc5 ou ultérieure ; dernière 3.4 stable : v3.4.0.61) |
 | C2 profile | `http` (MythicC2Profiles/http) avec `AESPSK = aes256_hmac` |
 | Machine cible Linux | VM Linux x86_64 (ex. Fedora, Ubuntu) joignable par le C2 |
 | Machine cible Windows | VM Windows 10/11 x64 joignable par le C2 |
@@ -28,9 +30,17 @@
 
 ```bash
 git clone https://github.com/its-a-feature/Mythic
-cd Mythic && make
+cd Mythic
+git checkout origin Mythic-v4.0.0   # branche de test v4 (RC) ; ou main si une stable v4 est sortie
+make
 sudo ./mythic-cli start
 ```
+
+> **Sauvegardes obligatoires avant upgrade d'une instance existante** (les migrations DB v4 sont irréversibles) :
+> ```bash
+> sudo ./mythic-cli backup database /path/mythic-db-backup
+> sudo ./mythic-cli backup files /path/mythic-files-backup
+> ```
 
 Vérifier que tous les conteneurs sont `healthy` :
 
@@ -50,19 +60,24 @@ Ouvrir l'UI : `https://localhost:7443` (accepter le certificat auto-signé).
 ### 1.2 Installer le profil C2 `http`
 
 ```bash
-sudo ./mythic-cli install github https://github.com/MythicC2Profiles/http
+sudo ./mythic-cli install github https://github.com/MythicC2Profiles/http -b Mythic-v4.0.0
 sudo ./mythic-cli start http
 ```
 
 ### 1.3 Installer `linky-mythic`
 
 ```bash
-# Option A : depuis GitHub
+# Option A : depuis GitHub — branche compatible Mythic 4.0
+sudo ./mythic-cli install github https://github.com/Nariod/linky-mythic -b Mythic-v4.0.0
+# Option A' : pour une instance encore en Mythic 3.4 (branche main après merge de la PR #29)
 sudo ./mythic-cli install github https://github.com/Nariod/linky-mythic
-
 # Option B : depuis une copie locale (dev)
 sudo ./mythic-cli install folder /chemin/absolu/linky-mythic
 sudo ./mythic-cli start linky
+
+> **Conteneurs à jour** : Mythic 4.0 exige des bibliothèques de conteneur v4-compatibles de *tous*
+> les services installés (payload types, C2 profiles…). Le profil `http` doit aussi être installé
+> depuis sa branche `Mythic-v4.0.0` (voir §1.2).
 ```
 
 > **SELinux (Fedora/RHEL)** : si le build échoue avec des erreurs de permission sur les bind-mounts :
@@ -341,4 +356,4 @@ sudo ./mythic-cli stop
 | `upload` erreur « Required arg, file, was not specified » | Saisie texte au lieu de la modale UI | Utiliser la modale de sélection de fichier (régression GO-08) |
 | `inject` erreur « Required arg, pid, was not specified » | Format invalide | `inject <pid> <b64>` ou JSON `{"pid":..,"shellcode":".."}` (régression GO-09) |
 | `301` sur les checkins | `callback_uri=/` | Mettre `callback_uri=/data` |
-| macOS build échoue | osxcross non installé | Attendu (non supporté actuellement) |
+| macOS build échoue | osxcross non installé dans l'image (install best-effort au Dockerfile) | Construire l'image avec le SDK macOS ; voir README §Known limitations |

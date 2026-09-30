@@ -23,7 +23,13 @@ This repository does **not** provide:
 
 Those pieces are provided by **Mythic**. This project provides the payload type container and the implant code.
 
-Quick install:
+Quick install (Mythic 4.0 — recommended):
+
+```bash
+sudo ./mythic-cli install github https://github.com/Nariod/linky-mythic -b Mythic-v4.0.0
+```
+
+For a Mythic 3.4 instance, use the default branch instead:
 
 ```bash
 sudo ./mythic-cli install github https://github.com/Nariod/linky-mythic
@@ -47,7 +53,7 @@ sudo ./mythic-cli install github https://github.com/Nariod/linky-mythic
 - ✅ Windows payload cross-compiles successfully (mingw-w64)
 - ✅ Windows + indirect syscalls build: ✅
 - ✅ Linux shellcode export: ✅
-- ❌ macOS build: expected failure (osxcross not installed)
+- ❌ macOS build: best-effort in the Dockerfile (osxcross/SDK download failures are silenced)
 - ✅ Mythic-compatible encryption (AES-256-CBC + HMAC-SHA256)
 - ✅ Chunked file transfer (download + upload) via Mythic file-store API
 - ✅ **Live callback verified** — Linux implant checks in and executes **16/16 commands**
@@ -63,6 +69,17 @@ sudo ./mythic-cli install github https://github.com/Nariod/linky-mythic
 | Linux x86_64 | ~1.9 MB | musl, static, stripped, LTO, `opt-level=z`, `panic=abort` |
 | Windows x86_64 | ~2 MB | mingw-w64, stripped |
 | macOS x86_64 | N/A | requires osxcross (best-effort in Dockerfile, see Known limitations) |
+
+### Mythic version compatibility
+
+| Mythic server | linky branch | Status |
+|---------------|--------------|--------|
+| 3.4.x (last stable: v3.4.0.61) | `main` | ✅ live-validated (v3.4.0.52, April 2026) |
+| 4.0 (`Mythic-v4.0.0` branch, RC) | `Mythic-v4.0.0` | ✅ code-compliant (container library, process browser envelope, build metadata) — live re-validation pending |
+
+The `Mythic-v4.0.0` branch follows the official naming convention from the Mythic 3.4 → 4.0 migration guide, so users can always install the v4-compatible version with the same `-b Mythic-v4.0.0` flag.
+
+See [TEST_PROCEDURE.md](TEST_PROCEDURE.md) for the full manual test procedure (install, C2 configuration, payload builds, live command matrices for Linux/Windows, regression cases, troubleshooting).
 
 ### Live command test results (Linux — April 2026, Mythic v3.4.0.52)
 
@@ -138,11 +155,12 @@ git clone https://github.com/its-a-feature/Mythic
 cd Mythic && make
 sudo ./mythic-cli start
 
-# 2. Install the HTTP C2 profile
-sudo ./mythic-cli install github https://github.com/MythicC2Profiles/http
+# 2. Install the HTTP C2 profile (v4-compatible branch on a Mythic 4.0 server)
+sudo ./mythic-cli install github https://github.com/MythicC2Profiles/http -b Mythic-v4.0.0
 
-# 3. Install linky-mythic
-sudo ./mythic-cli install github https://github.com/Nariod/linky-mythic
+# 3. Install linky-mythic (v4-compatible branch on a Mythic 4.0 server)
+sudo ./mythic-cli install github https://github.com/Nariod/linky-mythic -b Mythic-v4.0.0
+#    (on Mythic 3.4: drop the -b Mythic-v4.0.0 flag)
 
 # 4. Open the Mythic UI
 # https://localhost:7443
