@@ -16,7 +16,7 @@
 **Single constraint**: HTTPS is the only supported C2 transport. The Mythic `http` C2 profile
 handles TLS termination. No WebSocket, no SMB, no TCP — HTTP profile only.
 
-**Do not touch**: `agent_capabilities.json`, `config.json`, `.gitignore`.
+**Do not touch**: `.gitignore`.
 These files are already correct.
 
 **Reference files** (read before writing any code):

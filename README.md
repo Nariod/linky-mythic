@@ -348,14 +348,6 @@ Without this, `cargo build` inside the container will fail with permission error
 
 ### Running outside Docker (local development)
 
-```bash
-AGENT_CODE_DIR=/path/to/linky-mythic/Payload_Type/linky/agent_code \
-RABBITMQ_HOST=127.0.0.1 \
-RABBITMQ_PASSWORD=<from Mythic .env> \
-MYTHIC_SERVER_HOST=127.0.0.1 \
-./linky-container
-```
-
 The builder falls back to `/Mythic/agent_code` when `AGENT_CODE_DIR` is not set (the default path inside the Docker container).
 
 ---
@@ -364,8 +356,6 @@ The builder falls back to `/Mythic/agent_code` when `AGENT_CODE_DIR` is not set 
 
 ```text
 linky-mythic/
-├── config.json                             # Mythic payload type configuration
-├── agent_capabilities.json                 # Capability summary
 ├── Payload_Type/
 │   └── linky/
 │       ├── Dockerfile                      # Multi-stage: Go builder + Rust toolchain

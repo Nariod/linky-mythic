@@ -304,14 +304,17 @@ Procédure :
 
 ## 8. Tests automatisés (sanity build)
 
-Avant / après les tests manuels, lancer la suite automatisée du dépôt :
+Avant / après les tests manuels, lancer la suite automatisée (identique à la CI GitHub) :
 
 ```bash
-cd /chemin/vers/linky-mythic
-./run_tests.sh
+cd Payload_Type/linky/agent_code
+CALLBACK=x IMPLANT_SECRET=x PAYLOAD_UUID=x CALLBACK_URI=/ cargo fmt --all -- --check
+CALLBACK=x IMPLANT_SECRET=x PAYLOAD_UUID=x CALLBACK_URI=/ cargo test --workspace
+cd ..
+go build ./... && go vet ./...
 ```
 
-Doit afficher `All tests passed.` (cargo fmt check + cargo test --workspace + go build + go vet).
+Toutes les étapes doivent passer sans erreur.
 
 ---
 
@@ -343,7 +346,7 @@ sudo ./mythic-cli stop
 | Exécution Windows | Callback actif, commandes §6.2 validées | ☐ |
 | Injection | `inject` fonctionnel (standard + indirect syscalls) | ☐ |
 | Non-régression | Cas §7 validés | ☐ |
-| Tests automatisés | `run_tests.sh` OK | ☐ |
+| Tests automatisés | `cargo test` + `go build/vet` OK | ☐ |
 
 ---
 

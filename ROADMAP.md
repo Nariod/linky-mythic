@@ -158,7 +158,7 @@
 | HTTP C2 Profile | [MythicC2Profiles/http](https://github.com/MythicC2Profiles/http) | Transport HTTPS |
 | syscalls-rs | [Nariod/syscalls-rs](https://github.com/Nariod/syscalls-rs) | Indirect Syscalls |
 | Documentation | `TODO.md` | Détail technique |
-| Tests | `run_tests.sh` | Validation locale |
+| Tests | CI GitHub (`test.yml`) | Validation locale & CI |
 
 ---
 
