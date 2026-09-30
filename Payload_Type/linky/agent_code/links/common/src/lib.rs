@@ -271,6 +271,7 @@ pub mod cmds {
     pub const INJECT: u64 = cmd_hash("inject");
     pub const INTEGRITY: u64 = cmd_hash("integrity");
     pub const AMSI_ETW: u64 = cmd_hash("amsi_etw");
+    pub const BOF: u64 = cmd_hash("bof");
 }
 
 /// Runtime hash of an incoming command name (same algorithm as cmd_hash).

