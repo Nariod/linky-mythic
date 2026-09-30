@@ -1,7 +1,7 @@
 # linky-mythic - Feuille de Route
 
 > **Mythic Payload Type en Rust** - Implants natifs pour Linux, Windows et macOS
-> **Statut actuel**: Beta (Live-tested contre Mythic v3.4.32 - Avril 2026)
+> **Statut actuel**: Beta (Live-tested — Mythic 3.4 live + migration Mythic 4.0)
 > **Dernière mise à jour**: Juillet 2026
 
 ---
@@ -10,14 +10,14 @@
 
 | Métrique | Valeur | Statut |
 |----------|--------|--------|
-| Version Mythic compatible | v3.4.32 | ✅ |
+| Version Mythic compatible | v3.4 (live) + 4.0 (code-compliant, branche `Mythic-v4.0.0`) | ✅ |
 | Taille binaire Linux | ~1.9 MB | ✅ |
 | Taille binaire Windows | ~1.6-2 MB | ✅ |
 | Commandes implémentées | 21/21 | ✅ |
-| Tests unitaires | 9/9 | ✅ |
+| Tests unitaires | 61/61 | ✅ |
 | Callback live vérifié | Linux + Windows | ✅ |
 | Crypto | AES-256-CBC + HMAC-SHA256 | ✅ |
-| OPSEC | obfstr, zeroize, strip, LTO | ✅ Partiel |
+| OPSEC | obfstr, zeroize, strip, LTO, dispatch FNV-1a | ✅ |
 
 ---
 
@@ -44,13 +44,14 @@
 | **9** | Process/File Browser (JSON structuré) | ✅ | Intégration Mythic UI |
 | **10** | Commandes manquantes (cp, mv, rm, mkdir, execute) | ✅ | Parité avec Hannibal |
 | **11** | Réduction taille binaire (reqwest → ureq) | ✅ | **1.9 MB** (vs 4.5 MB) |
-| **12** | OPSEC hardening (obfstr, debuginfo=0) | ✅ | Strings sensibles obfusquées |
+| **12** | OPSEC hardening (obfstr, debuginfo=0, dispatch par hash FNV-1a) | ✅ | Vocabulaire de commandes absent du binaire (`strings` clean) |
 
 ### 🧪 Validation (Phases 13-17)
 
 | Phase | Description | Statut |
 |-------|-------------|--------|
 | **13.5** | Indirect Syscalls (Windows) | ✅ | Intégration `syscalls-rs` |
+| **15** | CI/CD et qualité (tests, cross-compile, release builds, audits deps, intégration Mythic) | ✅ | CI verte sur `test.yml` + `integration.yml` |
 | **16** | Restructuration dépôt + fixes Dockerfile | ✅ | Compatible `mythic-cli` |
 | **17** | Audit complet + tests live | ✅ | 21/21 commandes validées |
 
@@ -75,9 +76,9 @@
 | **M1** | Sleep Obfuscation (Windows) | Implémenter Ekko-style (RC4 `.text` encryption) ou Foliage (APC-based) | 🛡️ OPSEC | ⏳ À faire |
 | **M2** | Dynamic Module Loading | Équivalent HBIN (chargement de modules Rust `.so`/`.dll`) | 🔌 Extensibilité | ⏳ À faire |
 | **M3** | SOCKS Proxy | Pivoting réseau via Mythic | 🌐 Post-exploitation | ⏳ À faire |
-| **M4** | Process Browser Structuré | Sortie JSON pour `ps` (intégration Mythic UI) | 📊 UX | ⏳ À faire |
-| **M5** | File Browser Structuré | Sortie JSON pour `ls` (métadonnées fichiers) | 📁 UX | ⏳ À faire |
-| **M6** | Tests d'Intégration CI | Docker-in-Docker avec Mythic + HTTP C2 profile | ✅ Qualité | ⏳ À faire |
+| **M4** | Process Browser Structuré | Sortie JSON pour `ps` (intégration Mythic UI) | 📊 UX | ✅ Terminé (Phase 9) |
+| **M5** | File Browser Structuré | Sortie JSON pour `ls` (métadonnées fichiers) | 📁 UX | ✅ Terminé (Phase 9) |
+| **M6** | Tests d'Intégration CI | Docker-in-Docker avec Mythic + HTTP C2 profile | ✅ Qualité | ✅ Terminé (Phase 15, `integration.yml`) |
 
 ### 🌌 Priorité Basse (6-12 mois)
 
@@ -123,7 +124,8 @@
 | Commandes supportées | 25+ | ✅ 21 |
 | Plateformes | 3/3 (Linux/Win/macOS) | ⚠️ 2/3 (macOS en cours) |
 | Tests unitaires | 100% couverture | ✅ 9/9 |
-| Tests d'intégration | CI automatisée | ⚠️ Partiel (Phase 15) |
+| Tests d'intégration | CI automatisée | ✅ Phase 15 (`integration.yml` : Mythic end-to-end) |
+| CI qualité | tests, cross-compile, features, release builds, audits deps | ✅ Phase 15 |
 | OPSEC Score | 10/10 | ⚠️ 7/10 (Sleep Obfuscation manquant) |
 
 ---

@@ -1,0 +1,55 @@
+name: Mythic integration
+
+# Phase 15.2 — end-to-end integration test against a real Mythic server.
+# Heavy (builds the linky Docker image + boots the full Mythic stack), so it
+# only runs on demand and on changes to the container/builder definition.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'Payload_Type/linky/Dockerfile'
+      - 'Payload_Type/linky/mythic/**'
+      - 'Payload_Type/linky/main.go'
+      - 'Payload_Type/linky/go.mod'
+      - 'tests/integration_mythic.sh'
+      - '.github/workflows/integration.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mythic-integration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mythic-end-to-end:
+    name: Mythic server end-to-end
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
+          sudo docker image prune -af || true
+
+      - name: Set up Go (mythic-cli build)
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: Run integration test
+        env:
+          MYTHIC_VERSION: v3.4.36
+        run: ./tests/integration_mythic.sh /tmp/mythic-integration
+
+      - name: Dump Mythic logs on failure
+        if: failure()
+        run: |
+          [ -f /tmp/mythic-integration/docker-compose.yml ] \
+            && docker compose -f /tmp/mythic-integration/docker-compose.yml logs --tail 200 \
+            || true
+          sudo du -sh /tmp/mythic-integration 2>/dev/null || true

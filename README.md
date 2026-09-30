@@ -58,9 +58,10 @@ sudo ./mythic-cli install github https://github.com/Nariod/linky-mythic
 - ✅ Chunked file transfer (download + upload) via Mythic file-store API
 - ✅ **Live callback verified** — Linux implant checks in and executes **16/16 commands**
 - ✅ **Windows callbacks verified** — both standard and indirect syscalls variants: **21/21 commands pass**
-- ✅ OPSEC: string obfuscation (`obfstr`), path remapping, debuginfo stripped
+- ✅ OPSEC: string obfuscation (`obfstr`), path remapping, debuginfo stripped, compile-time FNV-1a command dispatch (no command names in the binary — `strings` clean)
 - ✅ **Indirect syscalls** (Windows): optional `inject` via [syscalls-rs](https://github.com/Nariod/syscalls-rs) — NtAPI calls bypass user-mode hooks
-- ✅ All unit tests pass (Go build + 9 Rust tests)
+- ✅ All unit tests pass (Go build + 61 Rust tests)
+- ✅ CI (GitHub Actions): unit tests, cross-compile matrix, Cargo feature matrix, release builds with artifacts, dependency audit (cargo-audit + govulncheck), Mythic end-to-end integration
 
 ### Binary sizes
 
@@ -299,10 +300,10 @@ Competitive reference: [silentwarble/Hannibal](https://github.com/silentwarble/H
 | Language | C (PIC, custom linker) | Rust (safe, idiomatic) |
 | Sleep obfuscation | Ekko (RC4 .text encryption) | Not yet |
 | Indirect syscalls | N/A (no inject) | ✅ Optional ([syscalls-rs](https://github.com/Nariod/syscalls-rs)) |
-| String obfuscation | Hash compile-time (ROL5) | `obfstr` compile-time encryption |
+| String obfuscation | Hash compile-time (ROL5) | `obfstr` compile-time encryption + FNV-1a command dispatch |
 | Post-exploitation | HBIN dynamic modules | Not yet |
 | Memory safety | Manual (C) | Compiler-enforced (Rust) |
-| Unit tests | None | 9 tests (Go + Rust) |
+| Unit tests | None | 61 tests (Rust) + Go build/vet in CI |
 
 ---
 
@@ -360,7 +361,7 @@ linky-mythic/
 │   └── linky/
 │       ├── Dockerfile                      # Multi-stage: Go builder + Rust toolchain
 │       ├── main.go                         # Mythic container entry point
-│       ├── go.mod                          # Go 1.25, MythicContainer v1.6.4
+│       ├── go.mod                          # Go 1.27, MythicContainer v1.7.0-rc5
 │       ├── mythic/
 │       │   └── agent_functions/
 │       │       ├── builder.go              # Build orchestration + AES callback encryption
@@ -413,18 +414,19 @@ cargo fmt --check
 | Cargo path remapping (`--remap-path-prefix`) | ✅ Done |
 | Debug info stripped (`-C debuginfo=0`) | ✅ Done |
 | Release binary stripped + LTO + `panic=abort` | ✅ Done |
-| Configurable User-Agent | ⬜ Planned |
+| Configurable User-Agent | ✅ Done (`user_agent` build parameter) |
 | Indirect syscalls (Windows inject) | ✅ Optional (feature flag `indirect-syscalls`) |
 | Constant-time HMAC verification | ✅ Done (verify_slice) |
-| Sleep obfuscation (Windows) | ⬜ Research |
-| AMSI/ETW bypass (Windows) | ⬜ Planned |
-| Conditional command compilation (Cargo features) | ⬜ Planned |
+| Compile-time command dispatch (FNV-1a) | ✅ Done — command vocabulary absent from the binary |
+| Sleep obfuscation (Windows) | ⬜ Research (roadmap M1) |
+| AMSI/ETW bypass (Windows) | ✅ Done (`amsi_etw` command) |
+| Conditional command compilation (Cargo features) | ✅ Done (`commands` build parameter + `cmd-*` features) |
 
 ---
 
 ## Roadmap
 
-See [TODO.md](TODO.md) for the detailed phase-by-phase plan.
+See [ROADMAP.md](ROADMAP.md) for the strategic roadmap, [TODO.md](TODO.md) for the detailed phase-by-phase history, and [AGENTS.md](AGENTS.md) for the coding standards applied to this repository.
 
 ### Near-term (bug fixes from audit)
 - ~~Fix `encryptCallback` plaintext fallback (GO-01)~~ ✅
@@ -442,9 +444,9 @@ See [TODO.md](TODO.md) for the detailed phase-by-phase plan.
 - ~~ARM64 targets~~ ✅ (`aarch64-unknown-linux-musl`, `aarch64-apple-darwin` in the builder and Dockerfile)
 
 ### Medium-term
-- Sleep obfuscation research (Windows — Ekko-style)
+- Sleep obfuscation (Windows — Ekko/Foliage style, roadmap M1)
 - Verify macOS builds end-to-end (osxcross install in Dockerfile is best-effort; SDK download may fail)
-- ARM64 targets (`aarch64-unknown-linux-musl`, `aarch64-apple-darwin`)
+- `ipinfo` command (network interface info)
 
 ### Long-term
 - Dynamic module loading (Rust equivalent of Hannibal's HBIN)
