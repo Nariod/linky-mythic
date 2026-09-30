@@ -82,6 +82,7 @@
 | **M4** | Process Browser Structuré | Sortie JSON pour `ps` (intégration Mythic UI) | 📊 UX | ✅ Terminé (Phase 9) |
 | **M5** | File Browser Structuré | Sortie JSON pour `ls` (métadonnées fichiers) | 📁 UX | ✅ Terminé (Phase 9) |
 | **M6** | Tests d'Intégration CI | Docker-in-Docker avec Mythic + HTTP C2 profile | ✅ Qualité | ✅ Terminé (Phase 15, `integration.yml`) |
+| **M7** | OPSEC du loader BOF | Remplacer l'allocation RWX du loader par RW→RX (changement de protection temporaire) ou module stomping (réutiliser la section .text d'une DLL légitime) pour éviter les signatures EDR sur les blocs RWX | 🛡️ OPSEC | ⏳ À faire |
 
 ### 🌌 Priorité Basse (6-12 mois)
 
